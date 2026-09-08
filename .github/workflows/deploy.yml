@@ -28,17 +28,20 @@ jobs:
         working-directory: frontend
         run: npm run build -- --configuration production
 
-      - name: Check build
+      - name: Prepare Pages
         run: |
-          echo "=== Angular output ==="
-          ls -la frontend/dist/channel/browser
-          test -f frontend/dist/channel/browser/index.html
+          rm -rf pages
+          mkdir pages
+          cp -R frontend/dist/channel/browser/. pages/
+          echo "=== PAGES CONTENT ==="
+          ls -la pages
+          test -f pages/index.html
 
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: frontend/dist/channel/browser
+          path: pages
 
   deploy:
     runs-on: ubuntu-latest
