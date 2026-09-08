@@ -19,6 +19,7 @@ import (
 var secretKey string = os.Getenv("SECRET_KEY")
 var store = &redistore.RediStore{}
 var cookieName = "channel_session"
+
 var (
 	googleOAuthScopes       = "https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile"
 	googleOAuthUrl          = google.Endpoint.AuthURL
@@ -47,6 +48,7 @@ type Session struct {
 
 type Response struct {
 	Success bool `json:"success"`
+	Status  string `json:"status,omitempty"`
 }
 
 func getGoogleAuthValues(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +66,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	defer r.Body.Close()
+
 	var auth Auth
 
 	if err := json.NewDecoder(r.Body).Decode(&auth); err != nil {
@@ -79,7 +82,8 @@ func login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	origin := r.Header.Get("Origin")
-	var googleOAuthConfig = &oauth2.Config{
+
+	googleOAuthConfig := &oauth2.Config{
 		ClientID:     googleOAuthClientId,
 		ClientSecret: googleOAuthClientSecret,
 		RedirectURL:  origin + "/login",
@@ -100,15 +104,86 @@ func login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tokenStr, _ := dyno.GetString(token.Extra("id_token"))
+
 	tokenValidator, err := idtoken.NewValidator(ctx)
+	if err != nil {
+		go saveLoginFailedLog("TokenValidator", err)
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		return
+	}
+
 	payload, err := tokenValidator.Validate(ctx, tokenStr, googleOAuthClientId)
 	if err != nil {
+		go saveLoginFailedLog("ValidateToken", err)
 		http.Error(w, "Invalid token", http.StatusUnauthorized)
 		return
 	}
 
 	email, _ := dyno.GetString(payload.Claims["email"])
+	name, _ := dyno.GetString(payload.Claims["name"])
+	id, _ := dyno.GetString(payload.Claims["sub"])
+	picture, _ := dyno.GetString(payload.Claims["picture"])
+
+	if email == "" {
+		http.Error(w, "Email not found", http.StatusUnauthorized)
+		return
+	}
+
+	if name == "" {
+		name = email
+	}
+
 	go registeringEmail(email)
+
+	/*
+		===========================================================
+		בדיקת הרשאה
+		===========================================================
+
+		רק משתמש שנמצא ב-privilegesUsers נחשב מאושר.
+
+		משתמש שלא נמצא שם:
+		1. נשמר ברשימת הממתינים.
+		2. לא מקבל Session.
+		3. מקבל תשובת 403 עם status=pending.
+
+		כך משתמש חדש לא יכול להיכנס לערוץ לפני אישור מנהל.
+	*/
+
+	if _, approved := privilegesUsers.Load(email); !approved {
+
+		pendingUser := PendingUser{
+			ID:         id,
+			Username:   name,
+			Email:      email,
+			PublicName: name,
+			Picture:    picture,
+			CreatedAt:  time.Now(),
+		}
+
+		if err := dbAddPendingUser(ctx, pendingUser); err != nil {
+			go saveLoginFailedLog("addPendingUser", err)
+			http.Error(w, "Failed to save pending user", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+
+		response := Response{
+			Success: false,
+			Status:  "pending",
+		}
+
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	/*
+		===========================================================
+		המשתמש מאושר
+		===========================================================
+	*/
 
 	u, err := getUser(ctx, payload.Claims)
 	if err != nil {
@@ -116,7 +191,16 @@ func login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "error", http.StatusInternalServerError)
 		return
 	}
-	picture, _ := dyno.GetString(payload.Claims["picture"])
+
+	/*
+		אם המשתמש היה בעבר ברשימת הממתינים,
+		מסירים אותו עכשיו לאחר שאושר.
+	*/
+	if err := dbRemovePendingUser(ctx, email); err != nil {
+		go saveLoginFailedLog("removePendingUser", err)
+		// לא עוצרים את הכניסה בגלל שגיאה לא קריטית זו.
+	}
+
 	userSession := Session{
 		ID:         u.ID,
 		Username:   u.Username,
@@ -126,9 +210,16 @@ func login(w http.ResponseWriter, r *http.Request) {
 		Email:      u.Email,
 	}
 
-	session, _ := store.Get(r, cookieName)
+	session, err := store.Get(r, cookieName)
+	if err != nil {
+		go saveLoginFailedLog("sessionGet", err)
+		http.Error(w, "error", http.StatusInternalServerError)
+		return
+	}
+
 	session.Values["user"] = userSession
-	session.Options.MaxAge = 60 * 60 * 24 * 30 // 30 days
+	session.Options.MaxAge = 60 * 60 * 24 * 30
+
 	if err := session.Save(r, w); err != nil {
 		go saveLoginFailedLog("sessionSave", err)
 		http.Error(w, "error", http.StatusInternalServerError)
@@ -137,31 +228,48 @@ func login(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	response := Response{Success: true}
+	response := Response{
+		Success: true,
+		Status:  "approved",
+	}
+
 	json.NewEncoder(w).Encode(response)
 }
 
 func logout(w http.ResponseWriter, r *http.Request) {
-	session, _ := store.Get(r, cookieName)
-
-	session.Values["user"] = nil
-	session.Options.MaxAge = -1
-	err := session.Save(r, w)
+	session, err := store.Get(r, cookieName)
 	if err != nil {
 		http.Error(w, "error", http.StatusInternalServerError)
 		return
 	}
 
+	session.Values["user"] = nil
+	session.Options.MaxAge = -1
+
+	if err := session.Save(r, w); err != nil {
+		http.Error(w, "error", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	response := Response{Success: true}
+
+	response := Response{
+		Success: true,
+	}
+
 	json.NewEncoder(w).Encode(response)
 }
 
 func checkLogin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session, _ := store.Get(r, cookieName)
+		session, err := store.Get(r, cookieName)
+		if err != nil {
+			http.Error(w, "User not authenticated", http.StatusUnauthorized)
+			return
+		}
 
 		_, ok := session.Values["user"].(Session)
+
 		if !ok {
 			http.Error(w, "User not authenticated", http.StatusUnauthorized)
 			return
@@ -172,7 +280,10 @@ func checkLogin(next http.Handler) http.Handler {
 }
 
 func checkPrivilege(r *http.Request, privilege Privilege) bool {
-	session, _ := store.Get(r, cookieName)
+	session, err := store.Get(r, cookieName)
+	if err != nil {
+		return false
+	}
 
 	s, ok := session.Values["user"].(Session)
 	if !ok {
@@ -183,8 +294,14 @@ func checkPrivilege(r *http.Request, privilege Privilege) bool {
 }
 
 func getUserInfo(w http.ResponseWriter, r *http.Request) {
-	session, _ := store.Get(r, cookieName)
+	session, err := store.Get(r, cookieName)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
 	userInfo, ok := session.Values["user"].(Session)
+
 	if !ok {
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
@@ -198,49 +315,66 @@ func getUser(ctx context.Context, claims map[string]any) (*User, error) {
 	var user User
 
 	email, _ := dyno.GetString(claims["email"])
+
 	if email == "" {
 		return nil, errors.New("email not found in claims")
 	}
+
 	name, _ := dyno.GetString(claims["name"])
+
 	if name == "" {
 		return nil, errors.New("name not found in claims")
 	}
-	id, _ := dyno.GetString(claims["sub"]) // Google user ID
 
+	id, _ := dyno.GetString(claims["sub"])
+
+	/*
+		בשלב הזה המשתמש חייב להיות ברשימת המשתמשים המאושרים.
+	*/
 	if v, ok := privilegesUsers.Load(email); ok {
+
 		user = v.(User)
+
 		if user.ID != id && id != "" {
 			user.ID = id
 		}
+
 		if user.Username == "" {
 			user.Username = name
 		}
+
 		if user.Email == "" {
 			user.Email = email
 		}
+
 		if user.PublicName == "" {
 			user.PublicName = name
 		}
+
 		privilegesUsers.Store(email, user)
+
 		users, err := dbGetUsersList(ctx)
+
 		if err != nil && err != redis.Nil {
 			return nil, err
 		}
+
 		for i, u := range users {
 			if u.Email == email {
 				users[i] = user
 			}
 		}
+
 		if err := dbSetUsersList(ctx, users); err != nil {
 			return nil, err
 		}
-	} else {
-		user = User{
-			ID:       id,
-			Username: name,
-			Email:    email,
-		}
+
+		return &user, nil
 	}
 
-	return &user, nil
+	/*
+		לא אמורים להגיע לכאן, כי login כבר בודק הרשאה.
+		הבדיקה נשארת גם כאן כשכבת הגנה נוספת.
+	*/
+	return nil, errors.New("user is not approved")
 }
