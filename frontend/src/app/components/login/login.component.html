@@ -1,28 +1,104 @@
-<div class="container mt-5">
-  <div class="row justify-content-center">
-    <div class="col-md-4">
-      <div class="card">
-        <div class="card-header text-center">
-          <h4>התחברות</h4>
+<div
+  class="login-container"
+  dir="rtl"
+>
+
+  <nb-card class="login-card">
+
+    <nb-card-header>
+
+      <h2>
+        כניסה לערוץ
+      </h2>
+
+    </nb-card-header>
+
+
+    <nb-card-body>
+
+      @if (checkUserInfo) {
+
+        <div class="message">
+
+          בודק את פרטי ההתחברות...
+
         </div>
-        <div class="card-body">
-          @if (status === 'failed') {
-            <div class="alert alert-danger" role="alert">
-              התחברות נכשלה, נסו שנית.
-            </div>
-          }
-          @if (!code && !checkUserInfo) {
-            <button type="submit" class="btn btn-primary w-100" (click)="login()">
-              התחבר באמצעות חשבון גוגל
-            </button>
-          }
-          @if (code || checkUserInfo) {
-            <div class="text-center">
-              <div class="spinner-border text-primary"></div>
-            </div>
-          }
+
+      }
+
+      @else if (status === 'pending') {
+
+        <div class="message pending">
+
+          <div class="message-icon">
+            ⏳
+          </div>
+
+          <h3>
+            הבקשה נשלחה בהצלחה
+          </h3>
+
+          <p>
+            חשבונך ממתין לאישור מנהל.
+          </p>
+
+          <p>
+            לאחר שהמנהל יאשר את בקשתך,
+            תוכל להתחבר לערוץ.
+          </p>
+
         </div>
-      </div>
-    </div>
-  </div>
+
+      }
+
+      @else if (status === 'failed') {
+
+        <div class="message error">
+
+          <div class="message-icon">
+            ⚠️
+          </div>
+
+          <h3>
+            ההתחברות נכשלה
+          </h3>
+
+          <p>
+            נסה להתחבר שוב.
+          </p>
+
+        </div>
+
+      }
+
+      @else {
+
+        <div class="login-content">
+
+          <p>
+            כדי להיכנס לערוץ יש להתחבר
+            באמצעות חשבון Google.
+          </p>
+
+
+          <button
+            nbButton
+            status="primary"
+            size="large"
+            fullWidth
+            (click)="login()"
+          >
+
+            כניסה באמצעות Google
+
+          </button>
+
+        </div>
+
+      }
+
+    </nb-card-body>
+
+  </nb-card>
+
 </div>
