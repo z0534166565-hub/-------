@@ -1,17 +1,380 @@
-<!doctype html>
-<html dir="rtl" lang="he">
-
+```html
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
 <head>
-  <meta charset="utf-8">
-  <title></title>
-  <base href="/">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@200;400;600;700&display=swap" rel="stylesheet">
-  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TheChannel</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f4f6f9;
+      color: #1f2937;
+    }
+
+    header {
+      height: 70px;
+      background: white;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 25px;
+    }
+
+    .logo {
+      font-size: 25px;
+      font-weight: bold;
+      color: #2563eb;
+    }
+
+    button {
+      border: 0;
+      border-radius: 9px;
+      padding: 11px 22px;
+      background: #2563eb;
+      color: white;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #1d4ed8;
+    }
+
+    main {
+      max-width: 900px;
+      margin: auto;
+      padding: 40px 20px;
+    }
+
+    .hero {
+      background: white;
+      border-radius: 18px;
+      padding: 45px 25px;
+      text-align: center;
+      box-shadow: 0 8px 30px rgba(0,0,0,.06);
+    }
+
+    .lock {
+      font-size: 55px;
+    }
+
+    h1 {
+      font-size: 36px;
+      margin: 12px 0;
+    }
+
+    .description {
+      color: #6b7280;
+      line-height: 1.8;
+      max-width: 600px;
+      margin: 0 auto 25px;
+    }
+
+    .section-title {
+      margin: 35px 0 15px;
+    }
+
+    .message {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 14px;
+    }
+
+    .message h3 {
+      margin-top: 0;
+    }
+
+    .message p {
+      color: #6b7280;
+      line-height: 1.7;
+    }
+
+    .notice {
+      margin-top: 20px;
+      padding: 16px;
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 12px;
+      color: #9a3412;
+      line-height: 1.6;
+    }
+
+    footer {
+      text-align: center;
+      color: #9ca3af;
+      padding: 35px;
+    }
+
+    /* חלון התחברות */
+
+    .modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.5);
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 1000;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-box {
+      background: white;
+      width: 100%;
+      max-width: 430px;
+      border-radius: 18px;
+      padding: 30px;
+      position: relative;
+      box-shadow: 0 20px 60px rgba(0,0,0,.2);
+    }
+
+    .close {
+      position: absolute;
+      left: 15px;
+      top: 12px;
+      background: transparent;
+      color: #555;
+      font-size: 25px;
+      padding: 2px 8px;
+    }
+
+    .modal-box h2 {
+      text-align: center;
+      margin-top: 5px;
+    }
+
+    input {
+      width: 100%;
+      padding: 13px;
+      margin: 7px 0;
+      border: 1px solid #d1d5db;
+      border-radius: 9px;
+      font-size: 15px;
+      direction: rtl;
+    }
+
+    .full {
+      width: 100%;
+      margin-top: 10px;
+    }
+
+    #loginMessage {
+      text-align: center;
+      margin-top: 15px;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 600px) {
+      header {
+        padding: 0 15px;
+      }
+
+      h1 {
+        font-size: 29px;
+      }
+
+      .hero {
+        padding: 35px 18px;
+      }
+    }
+  </style>
 </head>
 
 <body>
-  <app-root></app-root>
-</body>
 
+<header>
+  <div class="logo">TheChannel</div>
+
+  <button onclick="openLogin()">
+    כניסה
+  </button>
+</header>
+
+
+<main>
+
+  <section class="hero">
+
+    <div class="lock">🔐</div>
+
+    <h1>ברוכים הבאים</h1>
+
+    <p class="description">
+      מערכת הודעות פרטית ומאובטחת.<br>
+      רק משתמשים שאושרו יכולים לצפות בתוכן.
+    </p>
+
+    <button onclick="openLogin()">
+      התחברות
+    </button>
+
+  </section>
+
+
+  <h2 class="section-title">
+    הודעות אחרונות
+  </h2>
+
+
+  <section id="messages">
+
+    <article class="message">
+
+      <h3>ברוכים הבאים ל־TheChannel</h3>
+
+      <p>
+        לאחר התחברות ואישור המשתמש,
+        ההודעות והעדכונים יוצגו כאן.
+      </p>
+
+      <small>
+        הודעת מערכת
+      </small>
+
+    </article>
+
+  </section>
+
+
+  <div class="notice">
+    🔒 <strong>גישה מוגבלת</strong><br>
+    משתמשים חדשים יוכלו לצפות בתוכן לאחר אישור מנהל המערכת.
+  </div>
+
+</main>
+
+
+<footer>
+  © 2026 TheChannel
+</footer>
+
+
+<!-- חלון התחברות -->
+
+<div class="modal" id="loginModal">
+
+  <div class="modal-box">
+
+    <button class="close" onclick="closeLogin()">×</button>
+
+    <h2>כניסה למערכת</h2>
+
+    <input
+      id="email"
+      type="email"
+      placeholder="כתובת אימייל"
+    >
+
+    <input
+      id="password"
+      type="password"
+      placeholder="סיסמה"
+    >
+
+    <button
+      class="full"
+      onclick="loginUser()"
+    >
+      כניסה
+    </button>
+
+    <div id="loginMessage"></div>
+
+  </div>
+
+</div>
+
+
+<script>
+
+  function openLogin() {
+    document
+      .getElementById("loginModal")
+      .classList.add("show");
+  }
+
+
+  function closeLogin() {
+    document
+      .getElementById("loginModal")
+      .classList.remove("show");
+  }
+
+
+  function loginUser() {
+
+    const email =
+      document.getElementById("email").value.trim();
+
+    const password =
+      document.getElementById("password").value.trim();
+
+    const message =
+      document.getElementById("loginMessage");
+
+
+    if (!email || !password) {
+
+      message.style.color = "#dc2626";
+
+      message.textContent =
+        "יש למלא כתובת אימייל וסיסמה.";
+
+      return;
+    }
+
+
+    /*
+      כאן נחבר את Supabase.
+
+      בהמשך ייכנס כאן:
+
+      supabase.auth.signInWithPassword()
+
+      ולאחר הכניסה נבדוק את
+      approved של המשתמש.
+
+      approved = true
+      → כניסה לאתר.
+
+      approved = false
+      → ממתין לאישור.
+    */
+
+
+    message.style.color = "#2563eb";
+
+    message.textContent =
+      "הטופס עובד. החיבור לשרת יתווסף בשלב הבא.";
+  }
+
+
+  document
+    .getElementById("loginModal")
+    .addEventListener("click", function(event) {
+
+      if (event.target === this) {
+        closeLogin();
+      }
+
+    });
+
+</script>
+
+</body>
 </html>
+```
