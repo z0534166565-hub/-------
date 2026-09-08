@@ -1,3 +1,0 @@
-https://z0534166565-hub.github.io/Updates-from-the-House-of-Elders/ {
-    reverse_proxy backend:3000
-}
