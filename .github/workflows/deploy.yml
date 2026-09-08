@@ -30,16 +30,15 @@ jobs:
 
       - name: Check build
         run: |
-          echo "=== BUILD ==="
-          ls -la frontend/dist/channel
-          echo "=== FILES ==="
-          find frontend/dist/channel -maxdepth 2 -type f | head -50
+          echo "=== Angular output ==="
+          ls -la frontend/dist/channel/browser
+          test -f frontend/dist/channel/browser/index.html
 
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: frontend/dist/channel
+          path: frontend/dist/channel/browser
 
   deploy:
     runs-on: ubuntu-latest
