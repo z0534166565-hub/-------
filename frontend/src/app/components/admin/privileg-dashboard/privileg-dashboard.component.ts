@@ -1,33 +1,70 @@
+import { DatePipe } from '@angular/common';
 import { Component, OnInit } from '@angular/core';
-import { AdminService, PrivilegeUser } from '../../../services/admin.service';
-import { NbButtonModule, NbCardModule, NbInputModule, NbToastrService, NbIconModule, NbCheckboxModule } from "@nebular/theme";
 import { FormsModule } from '@angular/forms';
+
+import {
+  NbButtonModule,
+  NbCardModule,
+  NbCheckboxModule,
+  NbIconModule,
+  NbInputModule,
+  NbSpinnerModule,
+  NbToastrService
+} from '@nebular/theme';
+
+import {
+  AdminService,
+  PendingUser,
+  PrivilegeUser
+} from '../../../services/admin.service';
 
 import { AuthService } from '../../../services/auth.service';
 
 @Component({
   selector: 'app-privileg-dashboard',
+
   imports: [
     NbCardModule,
     NbButtonModule,
     NbInputModule,
     FormsModule,
     NbIconModule,
-    NbCheckboxModule
-],
-  templateUrl: './privileg-dashboard.component.html',
-  styleUrl: './privileg-dashboard.component.scss'
+    NbCheckboxModule,
+    NbSpinnerModule,
+    DatePipe
+  ],
+
+  templateUrl:
+    './privileg-dashboard.component.html',
+
+  styleUrl:
+    './privileg-dashboard.component.scss'
 })
-export class PrivilegDashboardComponent implements OnInit {
+export class PrivilegDashboardComponent
+  implements OnInit {
 
   constructor(
     private adminService: AdminService,
     private tostService: NbToastrService,
     public authService: AuthService,
-  ) { }
+  ) {}
+
+  // =========================================================
+  // PENDING USERS
+  // =========================================================
+
+  pendingUsers: PendingUser[] = [];
+
+  loadingPendingUsers = false;
+
+  // =========================================================
+  // APPROVED USERS
+  // =========================================================
 
   privilegeUsersList: PrivilegeUser[] = [];
-  addingNewUser: boolean = false;
+
+  addingNewUser = false;
+
   newUser: PrivilegeUser = {
     username: '',
     publicName: '',
@@ -39,42 +76,277 @@ export class PrivilegDashboardComponent implements OnInit {
     }
   };
 
+  // =========================================================
+  // INIT
+  // =========================================================
+
   ngOnInit(): void {
-    this.adminService.getPrivilegeUsersList()
-      .then(list => this.privilegeUsersList = list)
+
+    this.loadPendingUsers();
+
+    this.loadPrivilegeUsers();
+
   }
 
-  saveChanges() {
-    this.adminService.setPrivilegeUsers(this.privilegeUsersList)
-      .then(() => this.tostService.success('', 'השינוים נשמרו בהצלחה!'))
-      .catch(() => this.tostService.danger('', 'שגיאה בשמירת השינוים'));
+  // =========================================================
+  // LOAD PENDING USERS
+  // =========================================================
+
+  loadPendingUsers(): void {
+
+    this.loadingPendingUsers = true;
+
+    this.adminService
+      .getPendingUsers()
+
+      .then(list => {
+
+        this.pendingUsers =
+          list || [];
+
+      })
+
+      .catch(() => {
+
+        this.tostService.danger(
+          '',
+          'שגיאה בטעינת בקשות ההצטרפות'
+        );
+
+      })
+
+      .finally(() => {
+
+        this.loadingPendingUsers =
+          false;
+
+      });
   }
 
-  deleteUser(index: number) {
-    if (!confirm('האם אתה בטוח שברצונך למחוק את המשתמש הזה?')) return;
-    this.privilegeUsersList.splice(index, 1);
+  // =========================================================
+  // LOAD APPROVED USERS
+  // =========================================================
+
+  loadPrivilegeUsers(): void {
+
+    this.adminService
+      .getPrivilegeUsersList()
+
+      .then(list => {
+
+        this.privilegeUsersList =
+          list || [];
+
+      })
+
+      .catch(() => {
+
+        this.tostService.danger(
+          '',
+          'שגיאה בטעינת המשתמשים'
+        );
+
+      });
   }
 
-  saveNewUser() {
-    if (!this.newUser.email) return;
-    this.privilegeUsersList.push(this.newUser);
-    this.newUser = this.nullUser;
-    this.addingNewUser = false;
-  }
+  // =========================================================
+  // APPROVE
+  // =========================================================
 
-  resetNewUser() {
-    this.newUser = this.nullUser;
-    this.addingNewUser = false;
-  }
+  approveUser(
+    user: PendingUser
+  ): void {
 
-  nullUser: PrivilegeUser = {
-    username: '',
-    publicName: '',
-    email: '',
-    privileges: {
-      admin: false,
-      moderator: false,
-      writer: false
+    if (
+      !confirm(
+        `האם לאשר את המשתמש ${user.email}?`
+      )
+    ) {
+      return;
     }
-  };
+
+    this.adminService
+      .approvePendingUser(
+        user.email
+      )
+
+      .then(() => {
+
+        this.tostService.success(
+          '',
+          'המשתמש אושר בהצלחה'
+        );
+
+        this.pendingUsers =
+          this.pendingUsers.filter(
+            item =>
+              item.email !== user.email
+          );
+
+        this.loadPrivilegeUsers();
+
+      })
+
+      .catch(() => {
+
+        this.tostService.danger(
+          '',
+          'שגיאה באישור המשתמש'
+        );
+
+      });
+  }
+
+  // =========================================================
+  // REJECT
+  // =========================================================
+
+  rejectUser(
+    user: PendingUser
+  ): void {
+
+    if (
+      !confirm(
+        `האם לדחות את הבקשה של ${user.email}?`
+      )
+    ) {
+      return;
+    }
+
+    this.adminService
+      .rejectPendingUser(
+        user.email
+      )
+
+      .then(() => {
+
+        this.tostService.success(
+          '',
+          'הבקשה נדחתה'
+        );
+
+        this.pendingUsers =
+          this.pendingUsers.filter(
+            item =>
+              item.email !== user.email
+          );
+
+      })
+
+      .catch(() => {
+
+        this.tostService.danger(
+          '',
+          'שגיאה בדחיית הבקשה'
+        );
+
+      });
+  }
+
+  // =========================================================
+  // DELETE APPROVED USER
+  // =========================================================
+
+  deleteUser(
+    index: number
+  ): void {
+
+    if (
+      !confirm(
+        'האם אתה בטוח שברצונך למחוק את המשתמש הזה?'
+      )
+    ) {
+      return;
+    }
+
+    this.privilegeUsersList.splice(
+      index,
+      1
+    );
+  }
+
+  // =========================================================
+  // ADD USER
+  // =========================================================
+
+  saveNewUser(): void {
+
+    if (!this.newUser.email) {
+      return;
+    }
+
+    this.privilegeUsersList.push({
+      ...this.newUser,
+
+      privileges: {
+        ...this.newUser.privileges
+      }
+    });
+
+    this.newUser =
+      this.createEmptyUser();
+
+    this.addingNewUser =
+      false;
+  }
+
+  resetNewUser(): void {
+
+    this.newUser =
+      this.createEmptyUser();
+
+    this.addingNewUser =
+      false;
+  }
+
+  // =========================================================
+  // SAVE USERS
+  // =========================================================
+
+  saveChanges(): void {
+
+    this.adminService
+      .setPrivilegeUsers(
+        this.privilegeUsersList
+      )
+
+      .then(() => {
+
+        this.tostService.success(
+          '',
+          'השינויים נשמרו בהצלחה!'
+        );
+
+        this.loadPrivilegeUsers();
+
+      })
+
+      .catch(() => {
+
+        this.tostService.danger(
+          '',
+          'שגיאה בשמירת השינויים'
+        );
+
+      });
+  }
+
+  // =========================================================
+  // EMPTY USER
+  // =========================================================
+
+  private createEmptyUser():
+    PrivilegeUser {
+
+    return {
+      username: '',
+      publicName: '',
+      email: '',
+      privileges: {
+        admin: false,
+        moderator: false,
+        writer: false
+      }
+    };
+  }
 }
