@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/boj/redistore"
@@ -47,11 +48,12 @@ type Session struct {
 }
 
 type Response struct {
-	Success bool `json:"success"`
+	Success bool   `json:"success"`
 	Status  string `json:"status,omitempty"`
 }
 
 func getGoogleAuthValues(w http.ResponseWriter, r *http.Request) {
+
 	authValues := GoogleAuthValues{
 		GoogleOauthUrl:   googleOAuthUrl,
 		GoogleOauthScope: googleOAuthScopes,
@@ -59,25 +61,51 @@ func getGoogleAuthValues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+
 	json.NewEncoder(w).Encode(authValues)
 }
 
 func login(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+
+	ctx, cancel := context.WithTimeout(
+		r.Context(),
+		5*time.Second,
+	)
+
 	defer cancel()
 	defer r.Body.Close()
 
 	var auth Auth
 
 	if err := json.NewDecoder(r.Body).Decode(&auth); err != nil {
-		go saveLoginFailedLog("Decode", err)
-		http.Error(w, "error", http.StatusBadRequest)
+
+		go saveLoginFailedLog(
+			"Decode",
+			err,
+		)
+
+		http.Error(
+			w,
+			"error",
+			http.StatusBadRequest,
+		)
+
 		return
 	}
 
 	if auth.Code == "" {
-		go saveLoginFailedLog("Decode", errors.New("invalid credentials"))
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+
+		go saveLoginFailedLog(
+			"Decode",
+			errors.New("invalid credentials"),
+		)
+
+		http.Error(
+			w,
+			"Invalid credentials",
+			http.StatusUnauthorized,
+		)
+
 		return
 	}
 
@@ -90,44 +118,124 @@ func login(w http.ResponseWriter, r *http.Request) {
 		Endpoint:     google.Endpoint,
 	}
 
-	token, err := googleOAuthConfig.Exchange(ctx, auth.Code)
+	token, err := googleOAuthConfig.Exchange(
+		ctx,
+		auth.Code,
+	)
+
 	if err != nil {
-		go saveLoginFailedLog("Exchange", err)
-		http.Error(w, "error", http.StatusInternalServerError)
+
+		go saveLoginFailedLog(
+			"Exchange",
+			err,
+		)
+
+		http.Error(
+			w,
+			"error",
+			http.StatusInternalServerError,
+		)
+
 		return
 	}
 
 	if !token.Valid() {
-		go saveLoginFailedLog("Invalid token", nil)
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
+
+		go saveLoginFailedLog(
+			"Invalid token",
+			nil,
+		)
+
+		http.Error(
+			w,
+			"Invalid token",
+			http.StatusUnauthorized,
+		)
+
 		return
 	}
 
-	tokenStr, _ := dyno.GetString(token.Extra("id_token"))
+	tokenStr, _ :=
+		dyno.GetString(
+			token.Extra("id_token"),
+		)
 
-	tokenValidator, err := idtoken.NewValidator(ctx)
+	tokenValidator, err :=
+		idtoken.NewValidator(ctx)
+
 	if err != nil {
-		go saveLoginFailedLog("TokenValidator", err)
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
+
+		go saveLoginFailedLog(
+			"TokenValidator",
+			err,
+		)
+
+		http.Error(
+			w,
+			"Invalid token",
+			http.StatusUnauthorized,
+		)
+
 		return
 	}
 
-	payload, err := tokenValidator.Validate(ctx, tokenStr, googleOAuthClientId)
+	payload, err :=
+		tokenValidator.Validate(
+			ctx,
+			tokenStr,
+			googleOAuthClientId,
+		)
+
 	if err != nil {
-		go saveLoginFailedLog("ValidateToken", err)
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
+
+		go saveLoginFailedLog(
+			"ValidateToken",
+			err,
+		)
+
+		http.Error(
+			w,
+			"Invalid token",
+			http.StatusUnauthorized,
+		)
+
 		return
 	}
 
-	email, _ := dyno.GetString(payload.Claims["email"])
-	name, _ := dyno.GetString(payload.Claims["name"])
-	id, _ := dyno.GetString(payload.Claims["sub"])
-	picture, _ := dyno.GetString(payload.Claims["picture"])
+	email, _ :=
+		dyno.GetString(
+			payload.Claims["email"],
+		)
+
+	name, _ :=
+		dyno.GetString(
+			payload.Claims["name"],
+		)
+
+	id, _ :=
+		dyno.GetString(
+			payload.Claims["sub"],
+		)
+
+	picture, _ :=
+		dyno.GetString(
+			payload.Claims["picture"],
+		)
 
 	if email == "" {
-		http.Error(w, "Email not found", http.StatusUnauthorized)
+
+		http.Error(
+			w,
+			"Email not found",
+			http.StatusUnauthorized,
+		)
+
 		return
 	}
+
+	email = strings.TrimSpace(
+		strings.ToLower(email),
+	)
 
 	if name == "" {
 		name = email
@@ -136,18 +244,8 @@ func login(w http.ResponseWriter, r *http.Request) {
 	go registeringEmail(email)
 
 	/*
-		===========================================================
-		בדיקת הרשאה
-		===========================================================
-
-		רק משתמש שנמצא ב-privilegesUsers נחשב מאושר.
-
-		משתמש שלא נמצא שם:
-		1. נשמר ברשימת הממתינים.
-		2. לא מקבל Session.
-		3. מקבל תשובת 403 עם status=pending.
-
-		כך משתמש חדש לא יכול להיכנס לערוץ לפני אישור מנהל.
+		בדיקה ראשונה:
+		האם המשתמש כבר אושר?
 	*/
 
 	if _, approved := privilegesUsers.Load(email); !approved {
@@ -161,44 +259,91 @@ func login(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:  time.Now(),
 		}
 
-		if err := dbAddPendingUser(ctx, pendingUser); err != nil {
-			go saveLoginFailedLog("addPendingUser", err)
-			http.Error(w, "Failed to save pending user", http.StatusInternalServerError)
+		if err := dbAddPendingUser(
+			ctx,
+			pendingUser,
+		); err != nil {
+
+			go saveLoginFailedLog(
+				"addPendingUser",
+				err,
+			)
+
+			http.Error(
+				w,
+				"Failed to save pending user",
+				http.StatusInternalServerError,
+			)
+
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
+		/*
+			חשוב:
+			לא יוצרים Session למשתמש שממתין לאישור.
+		*/
+
+		w.Header().Set(
+			"Content-Type",
+			"application/json",
+		)
+
+		w.WriteHeader(
+			http.StatusForbidden,
+		)
 
 		response := Response{
 			Success: false,
 			Status:  "pending",
 		}
 
-		json.NewEncoder(w).Encode(response)
+		json.NewEncoder(w).Encode(
+			response,
+		)
+
 		return
 	}
 
 	/*
-		===========================================================
-		המשתמש מאושר
-		===========================================================
+		המשתמש אושר.
+		עכשיו נטען את המשתמש המאושר.
 	*/
 
-	u, err := getUser(ctx, payload.Claims)
+	u, err := getUser(
+		ctx,
+		payload.Claims,
+	)
+
 	if err != nil {
-		go saveLoginFailedLog("getUser", err)
-		http.Error(w, "error", http.StatusInternalServerError)
+
+		go saveLoginFailedLog(
+			"getUser",
+			err,
+		)
+
+		http.Error(
+			w,
+			"User is not approved",
+			http.StatusForbidden,
+		)
+
 		return
 	}
 
 	/*
-		אם המשתמש היה בעבר ברשימת הממתינים,
-		מסירים אותו עכשיו לאחר שאושר.
+		אם המשתמש היה בעבר ברשימת ההמתנה,
+		אין יותר צורך בבקשה שלו.
 	*/
-	if err := dbRemovePendingUser(ctx, email); err != nil {
-		go saveLoginFailedLog("removePendingUser", err)
-		// לא עוצרים את הכניסה בגלל שגיאה לא קריטית זו.
+
+	if err := dbRemovePendingUser(
+		ctx,
+		email,
+	); err != nil {
+
+		go saveLoginFailedLog(
+			"removePendingUser",
+			err,
+		)
 	}
 
 	userSession := Session{
@@ -210,132 +355,448 @@ func login(w http.ResponseWriter, r *http.Request) {
 		Email:      u.Email,
 	}
 
-	session, err := store.Get(r, cookieName)
+	session, err :=
+		store.Get(
+			r,
+			cookieName,
+		)
+
 	if err != nil {
-		go saveLoginFailedLog("sessionGet", err)
-		http.Error(w, "error", http.StatusInternalServerError)
+
+		go saveLoginFailedLog(
+			"sessionGet",
+			err,
+		)
+
+		http.Error(
+			w,
+			"error",
+			http.StatusInternalServerError,
+		)
+
 		return
 	}
 
-	session.Values["user"] = userSession
-	session.Options.MaxAge = 60 * 60 * 24 * 30
+	session.Values["user"] =
+		userSession
 
-	if err := session.Save(r, w); err != nil {
-		go saveLoginFailedLog("sessionSave", err)
-		http.Error(w, "error", http.StatusInternalServerError)
+	session.Options.MaxAge =
+		60 * 60 * 24 * 30
+
+	if err := session.Save(
+		r,
+		w,
+	); err != nil {
+
+		go saveLoginFailedLog(
+			"sessionSave",
+			err,
+		)
+
+		http.Error(
+			w,
+			"error",
+			http.StatusInternalServerError,
+		)
+
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(
+		"Content-Type",
+		"application/json",
+	)
 
 	response := Response{
 		Success: true,
 		Status:  "approved",
 	}
 
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(
+		response,
+	)
 }
 
-func logout(w http.ResponseWriter, r *http.Request) {
-	session, err := store.Get(r, cookieName)
+func logout(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	session, err :=
+		store.Get(
+			r,
+			cookieName,
+		)
+
 	if err != nil {
-		http.Error(w, "error", http.StatusInternalServerError)
+
+		http.Error(
+			w,
+			"error",
+			http.StatusInternalServerError,
+		)
+
 		return
 	}
 
 	session.Values["user"] = nil
+
 	session.Options.MaxAge = -1
 
-	if err := session.Save(r, w); err != nil {
-		http.Error(w, "error", http.StatusInternalServerError)
+	if err := session.Save(
+		r,
+		w,
+	); err != nil {
+
+		http.Error(
+			w,
+			"error",
+			http.StatusInternalServerError,
+		)
+
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(
+		"Content-Type",
+		"application/json",
+	)
 
 	response := Response{
 		Success: true,
 	}
 
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(
+		response,
+	)
 }
 
-func checkLogin(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session, err := store.Get(r, cookieName)
-		if err != nil {
-			http.Error(w, "User not authenticated", http.StatusUnauthorized)
-			return
-		}
+func checkLogin(
+	next http.Handler,
+) http.Handler {
 
-		_, ok := session.Values["user"].(Session)
+	return http.HandlerFunc(
+		func(
+			w http.ResponseWriter,
+			r *http.Request,
+		) {
 
-		if !ok {
-			http.Error(w, "User not authenticated", http.StatusUnauthorized)
-			return
-		}
+			session, err :=
+				store.Get(
+					r,
+					cookieName,
+				)
 
-		next.ServeHTTP(w, r)
-	})
+			if err != nil {
+
+				http.Error(
+					w,
+					"User not authenticated",
+					http.StatusUnauthorized,
+				)
+
+				return
+			}
+
+			userValue,
+				ok :=
+				session.Values["user"]
+
+			if !ok {
+
+				http.Error(
+					w,
+					"User not authenticated",
+					http.StatusUnauthorized,
+				)
+
+				return
+			}
+
+			userSession,
+				ok :=
+				userValue.(Session)
+
+			if !ok {
+
+				http.Error(
+					w,
+					"User not authenticated",
+					http.StatusUnauthorized,
+				)
+
+				return
+			}
+
+			/*
+				בדיקה חשובה:
+				גם אם יש למשתמש Cookie ישן,
+				הוא חייב עדיין להיות ברשימת המשתמשים המאושרים.
+			*/
+
+			email :=
+				strings.ToLower(
+					strings.TrimSpace(
+						userSession.Email,
+					),
+				)
+
+			approvedUser,
+				approved :=
+				privilegesUsers.Load(email)
+
+			if !approved {
+
+				/*
+					מבטלים את ה-Session הישן.
+				*/
+
+				session.Values["user"] = nil
+				session.Options.MaxAge = -1
+
+				_ = session.Save(
+					r,
+					w,
+				)
+
+				http.Error(
+					w,
+					"User is not approved",
+					http.StatusForbidden,
+				)
+
+				return
+			}
+
+			/*
+				מעדכנים את ההרשאות מהשרת,
+				כדי ששינוי הרשאות ייכנס לתוקף
+				גם עבור Session קיים.
+			*/
+
+			if user, ok :=
+				approvedUser.(User); ok {
+
+				userSession.ID =
+					user.ID
+
+				userSession.Username =
+					user.Username
+
+				userSession.Email =
+					user.Email
+
+				userSession.PublicName =
+					user.PublicName
+
+				userSession.Privileges =
+					user.Privileges
+
+				session.Values["user"] =
+					userSession
+
+				_ = session.Save(
+					r,
+					w,
+				)
+			}
+
+			next.ServeHTTP(
+				w,
+				r,
+			)
+		},
+	)
 }
 
-func checkPrivilege(r *http.Request, privilege Privilege) bool {
-	session, err := store.Get(r, cookieName)
+func checkPrivilege(
+	r *http.Request,
+	privilege Privilege,
+) bool {
+
+	session, err :=
+		store.Get(
+			r,
+			cookieName,
+		)
+
 	if err != nil {
 		return false
 	}
 
-	s, ok := session.Values["user"].(Session)
+	s,
+		ok :=
+		session.Values["user"].(Session)
+
 	if !ok {
 		return false
 	}
 
-	return s.Privileges[privilege]
-}
+	email :=
+		strings.ToLower(
+			strings.TrimSpace(
+				s.Email,
+			),
+		)
 
-func getUserInfo(w http.ResponseWriter, r *http.Request) {
-	session, err := store.Get(r, cookieName)
-	if err != nil {
-		http.Error(w, "User not found", http.StatusNotFound)
-		return
+	userValue,
+		approved :=
+		privilegesUsers.Load(email)
+
+	if !approved {
+		return false
 	}
 
-	userInfo, ok := session.Values["user"].(Session)
+	user,
+		ok :=
+		userValue.(User)
 
 	if !ok {
-		http.Error(w, "User not found", http.StatusNotFound)
+		return false
+	}
+
+	return user.Privileges[privilege]
+}
+
+func getUserInfo(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	session, err :=
+		store.Get(
+			r,
+			cookieName,
+		)
+
+	if err != nil {
+
+		http.Error(
+			w,
+			"User not found",
+			http.StatusUnauthorized,
+		)
+
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(userInfo)
-}
+	userInfo,
+		ok :=
+		session.Values["user"].(Session)
 
-func getUser(ctx context.Context, claims map[string]any) (*User, error) {
-	var user User
+	if !ok {
 
-	email, _ := dyno.GetString(claims["email"])
+		http.Error(
+			w,
+			"User not found",
+			http.StatusUnauthorized,
+		)
 
-	if email == "" {
-		return nil, errors.New("email not found in claims")
+		return
 	}
 
-	name, _ := dyno.GetString(claims["name"])
-
-	if name == "" {
-		return nil, errors.New("name not found in claims")
-	}
-
-	id, _ := dyno.GetString(claims["sub"])
+	email :=
+		strings.ToLower(
+			strings.TrimSpace(
+				userInfo.Email,
+			),
+		)
 
 	/*
-		בשלב הזה המשתמש חייב להיות ברשימת המשתמשים המאושרים.
+		גם כאן בודקים שהמשתמש עדיין מאושר.
 	*/
-	if v, ok := privilegesUsers.Load(email); ok {
 
-		user = v.(User)
+	if _, approved :=
+		privilegesUsers.Load(email); !approved {
 
-		if user.ID != id && id != "" {
+		session.Values["user"] = nil
+		session.Options.MaxAge = -1
+
+		_ = session.Save(
+			r,
+			w,
+		)
+
+		http.Error(
+			w,
+			"User not approved",
+			http.StatusForbidden,
+		)
+
+		return
+	}
+
+	w.Header().Set(
+		"Content-Type",
+		"application/json",
+	)
+
+	json.NewEncoder(w).Encode(
+		userInfo,
+	)
+}
+
+func getUser(
+	ctx context.Context,
+	claims map[string]any,
+) (*User, error) {
+
+	var user User
+
+	email, _ :=
+		dyno.GetString(
+			claims["email"],
+		)
+
+	if email == "" {
+		return nil,
+			errors.New(
+				"email not found in claims",
+			)
+	}
+
+	email =
+		strings.ToLower(
+			strings.TrimSpace(
+				email,
+			),
+		)
+
+	name, _ :=
+		dyno.GetString(
+			claims["name"],
+		)
+
+	if name == "" {
+		name = email
+	}
+
+	id, _ :=
+		dyno.GetString(
+			claims["sub"],
+		)
+
+	/*
+		רק משתמש שנמצא ברשימת המשתמשים
+	המאושרים יכול לקבל User.
+	*/
+
+	if v, ok :=
+		privilegesUsers.Load(email); ok {
+
+		user,
+			ok = v.(User)
+
+		if !ok {
+			return nil,
+				errors.New(
+					"invalid approved user",
+				)
+		}
+
+		if user.ID != id &&
+			id != "" {
+
 			user.ID = id
 		}
 
@@ -351,30 +812,46 @@ func getUser(ctx context.Context, claims map[string]any) (*User, error) {
 			user.PublicName = name
 		}
 
-		privilegesUsers.Store(email, user)
+		privilegesUsers.Store(
+			email,
+			user,
+		)
 
-		users, err := dbGetUsersList(ctx)
+		users, err :=
+			dbGetUsersList(ctx)
 
-		if err != nil && err != redis.Nil {
+		if err != nil &&
+			err != redis.Nil {
+
 			return nil, err
 		}
 
-		for i, u := range users {
-			if u.Email == email {
+		for i, u :=
+			range users {
+
+			if strings.EqualFold(
+				u.Email,
+				email,
+			) {
+
 				users[i] = user
 			}
 		}
 
-		if err := dbSetUsersList(ctx, users); err != nil {
+		if err :=
+			dbSetUsersList(
+				ctx,
+				users,
+			); err != nil {
+
 			return nil, err
 		}
 
 		return &user, nil
 	}
 
-	/*
-		לא אמורים להגיע לכאן, כי login כבר בודק הרשאה.
-		הבדיקה נשארת גם כאן כשכבת הגנה נוספת.
-	*/
-	return nil, errors.New("user is not approved")
+	return nil,
+		errors.New(
+			"user is not approved",
+		)
 }
