@@ -10,6 +10,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -19,11 +20,20 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - working-directory: frontend
+      - name: Install dependencies
+        working-directory: frontend
         run: npm ci
 
-      - working-directory: frontend
+      - name: Build Angular
+        working-directory: frontend
         run: npm run build -- --configuration production
+
+      - name: Check build
+        run: |
+          echo "=== BUILD ==="
+          ls -la frontend/dist/channel
+          echo "=== FILES ==="
+          find frontend/dist/channel -maxdepth 2 -type f | head -50
 
       - uses: actions/configure-pages@v5
 
