@@ -42,6 +42,15 @@ type User struct {
 	Privileges Privileges `json:"privileges"`
 }
 
+type PendingUser struct {
+	ID         string    `json:"id"`
+	Username   string    `json:"username"`
+	Email      string    `json:"email"`
+	PublicName string    `json:"publicName"`
+	Picture    string    `json:"picture,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
 type PushMessage struct {
 	Type string  `json:"type"`
 	M    Message `json:"message"`
@@ -50,6 +59,7 @@ type PushMessage struct {
 func init() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
 	rdb = redis.NewClient(&redis.Options{
 		Network:  redisType,
 		Addr:     redisAddr,
@@ -84,14 +94,15 @@ func setMessage(ctx context.Context, m *Message, isUpdate bool) error {
 		}
 	}
 
-	// Set message in hash
 	if err := rdb.HSet(ctx, messageKey, m).Err(); err != nil {
 		return err
 	}
 
-	// Add message timestamp to sorted set
 	if !isUpdate {
-		if err := rdb.ZAdd(ctx, "m_times:1", redis.Z{Score: float64(m.Timestamp.Unix()), Member: messageKey}).Err(); err != nil {
+		if err := rdb.ZAdd(ctx, "m_times:1", redis.Z{
+			Score:  float64(m.Timestamp.Unix()),
+			Member: messageKey,
+		}).Err(); err != nil {
 			return err
 		}
 	}
@@ -166,7 +177,6 @@ var getMessageRange = redis.NewScript(`
 	local isAdmin = ARGV[2] == 'true'
 	local countViews = ARGV[3] == 'true'
 	local direction = ARGV[4] or 'desc'
-
 
 	local start_index
 	if direction == 'asc' then
@@ -253,7 +263,19 @@ var getMessageRange = redis.NewScript(`
 
 func funcGetMessageRange(ctx context.Context, start, stop int64, isAdmin, countViews bool, direction string) ([]Message, error) {
 	offsetKeyName := fmt.Sprintf("messages:%d", start)
-	res, err := getMessageRange.Run(ctx, rdb, []string{"m_times:1", offsetKeyName}, []string{strconv.FormatInt(stop, 10), strconv.FormatBool(isAdmin), strconv.FormatBool(countViews), direction}).Result()
+
+	res, err := getMessageRange.Run(
+		ctx,
+		rdb,
+		[]string{"m_times:1", offsetKeyName},
+		[]string{
+			strconv.FormatInt(stop, 10),
+			strconv.FormatBool(isAdmin),
+			strconv.FormatBool(countViews),
+			direction,
+		},
+	).Result()
+
 	if err != nil {
 		return []Message{}, err
 	}
@@ -264,6 +286,7 @@ func funcGetMessageRange(ctx context.Context, start, stop int64, isAdmin, countV
 
 	var messages []Message
 	resStr, _ := dyno.GetString(res)
+
 	if err := json.Unmarshal([]byte(resStr), &messages); err != nil {
 		return []Message{}, err
 	}
@@ -288,13 +311,19 @@ var sumMessageReactions = redis.NewScript(`
 `)
 
 func funcGetSumReactions(ctx context.Context, messageId int) (Reactions, error) {
-	res, err := sumMessageReactions.Run(ctx, rdb, []string{fmt.Sprintf("message:%d:reactions", messageId)}).Result()
+	res, err := sumMessageReactions.Run(
+		ctx,
+		rdb,
+		[]string{fmt.Sprintf("message:%d:reactions", messageId)},
+	).Result()
+
 	if err != nil || res == nil || res == "{}" {
 		return nil, err
 	}
 
 	var reactions Reactions
 	resStr, _ := dyno.GetString(res)
+
 	if err := json.Unmarshal([]byte(resStr), &reactions); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal reactions: %v", err)
 	}
@@ -309,6 +338,7 @@ func updateMessageReactions(ctx context.Context, messageId int, reactions Reacti
 	if err != nil {
 		return err
 	}
+
 	if exists == 0 {
 		return fmt.Errorf("message %d does not exist", messageId)
 	}
@@ -327,10 +357,12 @@ func updateMessageReactions(ctx context.Context, messageId int, reactions Reacti
 
 func funcDeleteMessage(ctx context.Context, id string) error {
 	msgKey := fmt.Sprintf("messages:%s", id)
+
 	rdb.HSet(ctx, msgKey, "deleted", true)
 
 	var m Message
 	idInt, _ := strconv.Atoi(id)
+
 	m.ID = idInt
 	m.Deleted = true
 	m.LastEdit = time.Now()
@@ -341,6 +373,7 @@ func funcDeleteMessage(ctx context.Context, id string) error {
 		Type: "delete-message",
 		M:    m,
 	}
+
 	pushMessageData, _ := json.Marshal(pushMessage)
 	rdb.Publish(ctx, "events", pushMessageData)
 
@@ -351,17 +384,18 @@ func addViewsToMessages(ctx context.Context, messages []Message) {
 	if !settingConfig.CountViews {
 		return
 	}
+
 	for _, m := range messages {
 		rdb.HIncrBy(ctx, fmt.Sprintf("messages:%d", m.ID), "views", 1)
 	}
 }
 
-// https://redis.io/docs/latest/operate/oss_and_stack/management/security/#string-escaping-and-nosql-injection
 func addSubscription(token string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	_, err := rdb.SAdd(ctx, "subscriptions", token).Result()
+
 	if err != nil {
 		return err
 	}
@@ -374,10 +408,12 @@ func getSubcriptionsList() ([]string, error) {
 	defer cancel()
 
 	subscriptionsSet, err := rdb.SMembers(ctx, "subscriptions").Result()
+
 	if err != nil {
 		log.Printf("Failed to get subscriptions: %v\n", err)
 		return []string{}, err
 	}
+
 	return subscriptionsSet, nil
 }
 
@@ -386,10 +422,6 @@ func getChannelDetails(ctx context.Context) (map[string]string, error) {
 }
 
 func dbSetEmojisList(ctx context.Context, emojis []string) error {
-	// if len(emojis) == 0 {
-	// 	return fmt.Errorf("emojis list cannot be empty")
-	// }
-
 	emojisJSON, err := json.Marshal(emojis)
 	if err != nil {
 		return fmt.Errorf("failed to marshal emojis: %v", err)
@@ -400,19 +432,21 @@ func dbSetEmojisList(ctx context.Context, emojis []string) error {
 	}
 
 	return nil
-
 }
 
 func dbGetEmojisList(ctx context.Context) ([]string, error) {
 	emojisJSON, err := rdb.Get(ctx, "emojis:list").Result()
+
 	if err != nil {
 		if err == redis.Nil {
 			return emojis, nil
 		}
+
 		return nil, fmt.Errorf("failed to get emojis from db: %v", err)
 	}
 
 	var emojisList []string
+
 	if err := json.Unmarshal([]byte(emojisJSON), &emojisList); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal emojis: %v", err)
 	}
@@ -425,6 +459,7 @@ func dbSetUsersList(ctx context.Context, usersList []User) error {
 	if err != nil {
 		return err
 	}
+
 	if err := rdb.Set(ctx, "users:list", jsonUsersList, 0).Err(); err != nil {
 		return err
 	}
@@ -434,19 +469,110 @@ func dbSetUsersList(ctx context.Context, usersList []User) error {
 
 func dbGetUsersList(ctx context.Context) ([]User, error) {
 	u, err := rdb.Get(ctx, "users:list").Result()
+
 	if err != nil {
 		if err == redis.Nil {
 			return []User{}, nil
 		}
+
 		return nil, err
 	}
+
 	var usersList []User
+
 	err = json.Unmarshal([]byte(u), &usersList)
 	if err != nil {
 		return nil, err
 	}
 
 	return usersList, nil
+}
+
+/*
+===========================================================
+PENDING USERS
+משתמשים שממתינים לאישור מנהל
+===========================================================
+*/
+
+func dbSetPendingUsersList(ctx context.Context, usersList []PendingUser) error {
+	data, err := json.Marshal(usersList)
+	if err != nil {
+		return err
+	}
+
+	return rdb.Set(ctx, "pending_users:list", data, 0).Err()
+}
+
+func dbGetPendingUsersList(ctx context.Context) ([]PendingUser, error) {
+	data, err := rdb.Get(ctx, "pending_users:list").Result()
+
+	if err != nil {
+		if err == redis.Nil {
+			return []PendingUser{}, nil
+		}
+
+		return nil, err
+	}
+
+	var users []PendingUser
+
+	if err := json.Unmarshal([]byte(data), &users); err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
+func dbAddPendingUser(ctx context.Context, user PendingUser) error {
+	users, err := dbGetPendingUsersList(ctx)
+	if err != nil {
+		return err
+	}
+
+	for i, existing := range users {
+		if strings.EqualFold(existing.Email, user.Email) {
+			users[i] = user
+			return dbSetPendingUsersList(ctx, users)
+		}
+	}
+
+	users = append(users, user)
+
+	return dbSetPendingUsersList(ctx, users)
+}
+
+func dbRemovePendingUser(ctx context.Context, email string) error {
+	users, err := dbGetPendingUsersList(ctx)
+	if err != nil {
+		return err
+	}
+
+	result := make([]PendingUser, 0, len(users))
+
+	for _, user := range users {
+		if !strings.EqualFold(user.Email, email) {
+			result = append(result, user)
+		}
+	}
+
+	return dbSetPendingUsersList(ctx, result)
+}
+
+func dbGetPendingUser(ctx context.Context, email string) (*PendingUser, error) {
+	users, err := dbGetPendingUsersList(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, user := range users {
+		if strings.EqualFold(user.Email, email) {
+			result := user
+			return &result, nil
+		}
+	}
+
+	return nil, redis.Nil
 }
 
 func dbSetSettings(ctx context.Context, settings *Settings) error {
@@ -464,14 +590,17 @@ func dbSetSettings(ctx context.Context, settings *Settings) error {
 
 func dbGetSettings(ctx context.Context) (Settings, error) {
 	settingsJSON, err := rdb.Get(ctx, "settings:list").Result()
+
 	if err != nil {
 		if err == redis.Nil {
 			return Settings{}, nil
 		}
+
 		return nil, fmt.Errorf("failed to get settings from db: %v", err)
 	}
 
 	var settings Settings
+
 	if err := json.Unmarshal([]byte(settingsJSON), &settings); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal settings: %v", err)
 	}
@@ -481,9 +610,11 @@ func dbGetSettings(ctx context.Context) (Settings, error) {
 
 func dbGetUsersAmount(ctx context.Context) (int64, error) {
 	amount, err := rdb.SCard(ctx, "registered_emails").Result()
+
 	if err != nil {
 		return 0, fmt.Errorf("failed to get users amount: %v", err)
 	}
+
 	return amount, nil
 }
 
@@ -493,9 +624,11 @@ func getReportNextID(ctx context.Context) (int64, error) {
 
 func dbReportMessage(ctx context.Context, report *Report) error {
 	id, err := getReportNextID(ctx)
+
 	if err != nil {
 		return err
 	}
+
 	reportKey := fmt.Sprintf("report:%d", id)
 	report.Id = id
 
@@ -503,11 +636,17 @@ func dbReportMessage(ctx context.Context, report *Report) error {
 		return err
 	}
 
-	if err := rdb.ZAdd(ctx, "reports:list", redis.Z{Score: float64(report.CreatedAt.Unix()), Member: reportKey}).Err(); err != nil {
+	if err := rdb.ZAdd(ctx, "reports:list", redis.Z{
+		Score:  float64(report.CreatedAt.Unix()),
+		Member: reportKey,
+	}).Err(); err != nil {
 		return err
 	}
 
-	if err := rdb.ZAdd(ctx, "reports:open", redis.Z{Score: float64(report.CreatedAt.Unix()), Member: reportKey}).Err(); err != nil {
+	if err := rdb.ZAdd(ctx, "reports:open", redis.Z{
+		Score:  float64(report.CreatedAt.Unix()),
+		Member: reportKey,
+	}).Err(); err != nil {
 		return err
 	}
 
@@ -519,6 +658,7 @@ var getReportsScript = redis.NewScript(`
 	local limit = tonumber(ARGV[2])
 
 	local reportsStatusKey
+
 	if status == 'open' then
 		reportsStatusKey = KEYS[2]
 	elseif status == 'all' then
@@ -530,25 +670,27 @@ var getReportsScript = redis.NewScript(`
 	local reports = redis.call('ZREVRANGE', reportsStatusKey, 0, limit - 1)
 
 	local result = {}
+
 	for _, reportKey in ipairs(reports) do
 		local report = redis.call('HGETALL', reportKey)
 
 		local reportTable = {}
+
 		for i = 1, #report, 2 do
-		  local key = report[i]
-		  local value = report[i + 1]
+			local key = report[i]
+			local value = report[i + 1]
 
-		   if key == 'messageId' then
-			 reportTable[key] = tonumber(value)
-		   elseif key == 'closed' then
-			 reportTable[key] = value == '1'
-		   elseif key == 'id' then
-			 reportTable[key] = tonumber(value)
-		   else
-		     reportTable[key] = value
-		   end
-
+			if key == 'messageId' then
+				reportTable[key] = tonumber(value)
+			elseif key == 'closed' then
+				reportTable[key] = value == '1'
+			elseif key == 'id' then
+				reportTable[key] = tonumber(value)
+			else
+				reportTable[key] = value
+			end
 		end
+
 		table.insert(result, reportTable)
 	end
 
@@ -556,17 +698,32 @@ var getReportsScript = redis.NewScript(`
 `)
 
 func dbGetReports(ctx context.Context, status ReportStatus) (Reports, error) {
-	jsonReports, err := getReportsScript.Run(ctx, rdb, []string{"reports:list", "reports:open", "reports:closed"}, []string{string(status), "100"}).Result()
+	jsonReports, err := getReportsScript.Run(
+		ctx,
+		rdb,
+		[]string{
+			"reports:list",
+			"reports:open",
+			"reports:closed",
+		},
+		[]string{
+			string(status),
+			"100",
+		},
+	).Result()
+
 	if err != nil {
 		return nil, err
 	}
 
 	var reports Reports
+
 	if jsonReports == nil || jsonReports == "{}" {
 		return reports, nil
 	}
 
 	resStr, _ := dyno.GetString(jsonReports)
+
 	if resStr == "" {
 		return nil, nil
 	}
@@ -580,24 +737,41 @@ func dbGetReports(ctx context.Context, status ReportStatus) (Reports, error) {
 
 func dbSetReports(ctx context.Context, report *Report) error {
 	reportKey := fmt.Sprintf("report:%d", report.Id)
+
 	switch report.Closed {
 	case true:
 		if err := rdb.ZRem(ctx, "reports:open", reportKey).Err(); err != nil {
 			return err
 		}
-		if err := rdb.ZAdd(ctx, "reports:closed", redis.Z{Score: float64(report.UpdatedAt.Unix()), Member: reportKey}).Err(); err != nil {
+
+		if err := rdb.ZAdd(ctx, "reports:closed", redis.Z{
+			Score:  float64(report.UpdatedAt.Unix()),
+			Member: reportKey,
+		}).Err(); err != nil {
 			return err
 		}
+
 	case false:
 		if err := rdb.ZRem(ctx, "reports:closed", reportKey).Err(); err != nil {
 			return err
 		}
-		if err := rdb.ZAdd(ctx, "reports:open", redis.Z{Score: float64(report.UpdatedAt.Unix()), Member: reportKey}).Err(); err != nil {
+
+		if err := rdb.ZAdd(ctx, "reports:open", redis.Z{
+			Score:  float64(report.UpdatedAt.Unix()),
+			Member: reportKey,
+		}).Err(); err != nil {
 			return err
 		}
 	}
 
-	if err := rdb.HSet(ctx, reportKey, "closed", report.Closed, "updatedAt", report.UpdatedAt).Err(); err != nil {
+	if err := rdb.HSet(
+		ctx,
+		reportKey,
+		"closed",
+		report.Closed,
+		"updatedAt",
+		report.UpdatedAt,
+	).Err(); err != nil {
 		return err
 	}
 
@@ -607,16 +781,26 @@ func dbSetReports(ctx context.Context, report *Report) error {
 func dbSavePeakSSEConnections(peak *PeakSSEConnections) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	rdb.HSet(ctx, "peak_sse_connections", "value", peak.Value, "timestamp", peak.Timestamp.Unix())
+
+	rdb.HSet(
+		ctx,
+		"peak_sse_connections",
+		"value",
+		peak.Value,
+		"timestamp",
+		peak.Timestamp.Unix(),
+	)
 }
 
 func dbGetPeakSSEConnections(ctx context.Context) (*PeakSSEConnections, error) {
 	p, err := rdb.HGetAll(ctx, "peak_sse_connections").Result()
+
 	if err != nil {
 		return nil, err
 	}
 
 	var peak PeakSSEConnections
+
 	vel, _ := dyno.GetInteger(p["value"])
 	timestamp, _ := dyno.GetInteger(p["timestamp"])
 
@@ -630,20 +814,47 @@ func dbSaveSSEStatistics(amount int64) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	key := fmt.Sprintf("sse_statistics:%d:%d", time.Now().Month(), time.Now().Year())
-	member := fmt.Sprintf("%d&%s", amount, time.Now().Format("02-01-2006 15:04"))
+	key := fmt.Sprintf(
+		"sse_statistics:%d:%d",
+		time.Now().Month(),
+		time.Now().Year(),
+	)
 
-	rdb.ZAdd(ctx, key, redis.Z{Score: float64(time.Now().Unix()), Member: member})
+	member := fmt.Sprintf(
+		"%d&%s",
+		amount,
+		time.Now().Format("02-01-2006 15:04"),
+	)
+
+	rdb.ZAdd(
+		ctx,
+		key,
+		redis.Z{
+			Score:  float64(time.Now().Unix()),
+			Member: member,
+		},
+	)
 }
 
 func dbGetSSEStatistics(ctx context.Context, length int64) (*Statistics, error) {
-	key := fmt.Sprintf("sse_statistics:%d:%d", time.Now().Month(), time.Now().Year())
+	key := fmt.Sprintf(
+		"sse_statistics:%d:%d",
+		time.Now().Month(),
+		time.Now().Year(),
+	)
+
 	result := &Statistics{
 		Data:   []int64{},
 		Labels: []string{},
 	}
 
-	r, err := rdb.ZRevRangeWithScores(ctx, key, 0, length-1).Result()
+	r, err := rdb.ZRevRangeWithScores(
+		ctx,
+		key,
+		0,
+		length-1,
+	).Result()
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to get SSE statistics: %v", err)
 	}
@@ -654,11 +865,15 @@ func dbGetSSEStatistics(ctx context.Context, length int64) (*Statistics, error) 
 
 	for _, item := range r {
 		itemMember, _ := dyno.GetString(item.Member)
+
 		p := strings.Split(itemMember, "&")
+
 		if len(p) != 2 {
 			continue
 		}
+
 		val, _ := dyno.GetInteger(p[0])
+
 		result.Data = append(result.Data, val)
 		result.Labels = append(result.Labels, p[1])
 	}
@@ -668,11 +883,17 @@ func dbGetSSEStatistics(ctx context.Context, length int64) (*Statistics, error) 
 
 func dbSaveScheduledMessages(ctx context.Context, messages *[]Message) error {
 	jsonMessages, err := json.Marshal(messages)
+
 	if err != nil {
 		return fmt.Errorf("failed to marshal scheduled messages: %v", err)
 	}
 
-	if err := rdb.Set(ctx, "scheduled_messages:list", jsonMessages, 0).Err(); err != nil {
+	if err := rdb.Set(
+		ctx,
+		"scheduled_messages:list",
+		jsonMessages,
+		0,
+	).Err(); err != nil {
 		return fmt.Errorf("failed to set scheduled messages in db: %v", err)
 	}
 
@@ -680,17 +901,32 @@ func dbSaveScheduledMessages(ctx context.Context, messages *[]Message) error {
 }
 
 func dbGetScheduledMessages(ctx context.Context) (*[]Message, error) {
-	messagesJSON, err := rdb.Get(ctx, "scheduled_messages:list").Result()
+	messagesJSON, err := rdb.Get(
+		ctx,
+		"scheduled_messages:list",
+	).Result()
+
 	if err != nil {
 		if err == redis.Nil {
 			return &[]Message{}, nil
 		}
-		return nil, fmt.Errorf("failed to get scheduled messages from db: %v", err)
+
+		return nil, fmt.Errorf(
+			"failed to get scheduled messages from db: %v",
+			err,
+		)
 	}
 
 	var messages []Message
-	if err := json.Unmarshal([]byte(messagesJSON), &messages); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal scheduled messages: %v", err)
+
+	if err := json.Unmarshal(
+		[]byte(messagesJSON),
+		&messages,
+	); err != nil {
+		return nil, fmt.Errorf(
+			"failed to unmarshal scheduled messages: %v",
+			err,
+		)
 	}
 
 	return &messages, nil
