@@ -1,17 +1,29 @@
 import { Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
+
+import {
+  NbButtonModule,
+  NbCardModule
+} from '@nebular/theme';
+
 import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-login',
+
   imports: [
-    FormsModule
+    FormsModule,
+    NbButtonModule,
+    NbCardModule
   ],
+
   templateUrl: './login.component.html',
+
   styleUrl: './login.component.scss'
 })
-export class LoginComponent implements OnInit {
+export class LoginComponent
+  implements OnInit {
 
   code = '';
 
@@ -39,7 +51,7 @@ export class LoginComponent implements OnInit {
 
       if (this._authService.userInfo) {
 
-        this.router.navigate(['/']);
+        await this.router.navigate(['/']);
 
         return;
       }
@@ -50,66 +62,64 @@ export class LoginComponent implements OnInit {
         params => {
 
           if (
-            Object.keys(params).length === 0
+            !params['code']
           ) {
             return;
           }
 
+          const savedState =
+            localStorage.getItem(
+              'google_oauth_state'
+            );
+
           if (
-            params['code'] &&
-            params['state'] ===
-              localStorage.getItem(
-                'google_oauth_state'
-              )
+            params['state'] !== savedState
           ) {
-
-            this.code =
-              params['code'];
-
-            this._authService
-              .login(this.code)
-
-              .then(() => {
-
-                this.status =
-                  'approved';
-
-                localStorage.removeItem(
-                  'google_oauth_state'
-                );
-
-                this.router.navigate(['/']);
-
-              })
-
-              .catch((err: any) => {
-
-                this.code = '';
-
-                localStorage.removeItem(
-                  'google_oauth_state'
-                );
-
-                /*
-                 * משתמש שהתחבר בהצלחה ל-Google
-                 * אבל עדיין לא אושר על ידי מנהל.
-                 */
-                if (
-                  err?.status === 403 &&
-                  err?.error?.status === 'pending'
-                ) {
-
-                  this.status =
-                    'pending';
-
-                  return;
-                }
-
-                this.status =
-                  'failed';
-
-              });
+            return;
           }
+
+          this.code =
+            params['code'];
+
+          this._authService
+            .login(this.code)
+
+            .then(() => {
+
+              this.status =
+                'approved';
+
+              localStorage.removeItem(
+                'google_oauth_state'
+              );
+
+              this.router.navigate(['/']);
+
+            })
+
+            .catch((err: any) => {
+
+              this.code = '';
+
+              localStorage.removeItem(
+                'google_oauth_state'
+              );
+
+              if (
+                err?.status === 403 &&
+                err?.error?.status === 'pending'
+              ) {
+
+                this.status =
+                  'pending';
+
+                return;
+              }
+
+              this.status =
+                'failed';
+
+            });
         }
       );
 
@@ -127,6 +137,7 @@ export class LoginComponent implements OnInit {
 
     this._authService
       .loginWithGoogle()
+
       .catch(() => {
 
         this.status =
