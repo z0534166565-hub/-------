@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, firstValueFrom, Observable, Subject } from 'rxjs';
+
 import { ChatFile, ChatMessage } from './chat.service';
 import { ResponseResult } from '../models/response-result.model';
 import { Setting } from '../models/setting.model';
@@ -15,33 +16,52 @@ export interface PrivilegeUser {
   privileges: Record<string, boolean>;
 }
 
+export interface PendingUser {
+  id: string;
+  username: string;
+  email: string;
+  publicName: string;
+  picture?: string;
+  createdAt: string;
+}
+
 export type EditMsg = {
   new?: boolean;
   isScheduling?: boolean;
   message: ChatMessage;
-}
+};
 
 @Injectable({
   providedIn: 'root'
 })
 export class AdminService {
-  private messageEdit = new BehaviorSubject<EditMsg | undefined>(undefined);
-  messageEditObservable = this.messageEdit.asObservable();
 
-  private schedulingBus = new Subject<void>();
-  schedulingBusObservable = this.schedulingBus.asObservable();
+  private messageEdit =
+    new BehaviorSubject<EditMsg | undefined>(undefined);
 
-  private schedulingMessages: ChatMessage[] | null = null;
+  messageEditObservable =
+    this.messageEdit.asObservable();
+
+  private schedulingBus =
+    new Subject<void>();
+
+  schedulingBusObservable =
+    this.schedulingBus.asObservable();
+
+  private schedulingMessages:
+    ChatMessage[] | null = null;
 
   constructor(
     private http: HttpClient,
-  ) { }
+  ) {}
 
   reloadSchedulingMessage() {
     this.schedulingBus.next();
   }
 
-  setEditMessage(edit: EditMsg | undefined) {
+  setEditMessage(
+    edit: EditMsg | undefined
+  ) {
     this.messageEdit.next(edit);
   }
 
@@ -49,97 +69,299 @@ export class AdminService {
     return this.messageEdit.value;
   }
 
+  // =========================================================
+  // STATISTICS
+  // =========================================================
+
   getStatistics(): Promise<Statistics> {
-    return firstValueFrom(this.http.get<Statistics>('/api/admin/statistics'));
+    return firstValueFrom(
+      this.http.get<Statistics>(
+        '/api/admin/statistics'
+      )
+    );
   }
 
   resetPeakStatistics(): Promise<ResponseResult> {
-    return firstValueFrom(this.http.post<ResponseResult>('/api/admin/statistics/reset', {}));
+    return firstValueFrom(
+      this.http.post<ResponseResult>(
+        '/api/admin/statistics/reset',
+        {}
+      )
+    );
   }
 
-  addMessage(message: ChatMessage): Observable<ChatMessage> {
-    return this.http.post<ChatMessage>('/api/admin/new', message);
+  // =========================================================
+  // MESSAGES
+  // =========================================================
+
+  addMessage(
+    message: ChatMessage
+  ): Observable<ChatMessage> {
+    return this.http.post<ChatMessage>(
+      '/api/admin/new',
+      message
+    );
   }
 
-  editMessage(message: ChatMessage): Observable<ChatMessage> {
-    return this.http.post<ChatMessage>(`/api/admin/edit-message`, message);
+  editMessage(
+    message: ChatMessage
+  ): Observable<ChatMessage> {
+    return this.http.post<ChatMessage>(
+      '/api/admin/edit-message',
+      message
+    );
   }
 
-  deleteMessage(id: number | undefined): Observable<ChatMessage> {
-    return this.http.get<ChatMessage>(`/api/admin/delete-message/${id}`);
+  deleteMessage(
+    id: number | undefined
+  ): Observable<ChatMessage> {
+    return this.http.get<ChatMessage>(
+      `/api/admin/delete-message/${id}`
+    );
   }
+
+  // =========================================================
+  // FILES
+  // =========================================================
 
   uploadFile(formData: FormData) {
-    return this.http.post<ChatFile>('/api/admin/upload', formData, {
-      reportProgress: true,
-      observe: 'events',
-      responseType: 'json'
-    });
+    return this.http.post<ChatFile>(
+      '/api/admin/upload',
+      formData,
+      {
+        reportProgress: true,
+        observe: 'events',
+        responseType: 'json'
+      }
+    );
   }
+
+  // =========================================================
+  // APPROVED USERS
+  // =========================================================
 
   getPrivilegeUsersList(): Promise<PrivilegeUser[]> {
-    return firstValueFrom(this.http.get<PrivilegeUser[]>('/api/admin/privilegs-users/get-list'));
+    return firstValueFrom(
+      this.http.get<PrivilegeUser[]>(
+        '/api/admin/privilegs-users/get-list'
+      )
+    );
   }
 
-  setPrivilegeUsers(privilegeUsers: PrivilegeUser[]): Promise<ResponseResult> {
-    return firstValueFrom(this.http.post<ResponseResult>('/api/admin/privilegs-users/set', { list: privilegeUsers }));
+  setPrivilegeUsers(
+    privilegeUsers: PrivilegeUser[]
+  ): Promise<ResponseResult> {
+    return firstValueFrom(
+      this.http.post<ResponseResult>(
+        '/api/admin/privilegs-users/set',
+        {
+          list: privilegeUsers
+        }
+      )
+    );
   }
 
-  setEmojis(emojis: string[] | undefined) {
-    return firstValueFrom(this.http.post<ResponseResult>('/api/admin/set-emojis', { emojis }));
+  // =========================================================
+  // PENDING USERS
+  // =========================================================
+
+  getPendingUsers(): Promise<PendingUser[]> {
+    return firstValueFrom(
+      this.http.get<PendingUser[]>(
+        '/api/admin/pending-users'
+      )
+    );
   }
+
+  approvePendingUser(
+    email: string
+  ): Promise<ResponseResult> {
+    return firstValueFrom(
+      this.http.post<ResponseResult>(
+        '/api/admin/pending-users/approve',
+        {
+          email
+        }
+      )
+    );
+  }
+
+  rejectPendingUser(
+    email: string
+  ): Promise<ResponseResult> {
+    return firstValueFrom(
+      this.http.post<ResponseResult>(
+        '/api/admin/pending-users/reject',
+        {
+          email
+        }
+      )
+    );
+  }
+
+  // =========================================================
+  // EMOJIS
+  // =========================================================
+
+  setEmojis(
+    emojis: string[] | undefined
+  ) {
+    return firstValueFrom(
+      this.http.post<ResponseResult>(
+        '/api/admin/set-emojis',
+        {
+          emojis
+        }
+      )
+    );
+  }
+
+  // =========================================================
+  // SETTINGS
+  // =========================================================
 
   getSettings(): Promise<Setting[]> {
-    return firstValueFrom(this.http.get<Setting[]>('/api/admin/settings/get'));
+    return firstValueFrom(
+      this.http.get<Setting[]>(
+        '/api/admin/settings/get'
+      )
+    );
   }
 
-  setSettings(settings: Setting[]): Promise<ResponseResult> {
-    return firstValueFrom(this.http.post<ResponseResult>('/api/admin/settings/set', settings));
+  setSettings(
+    settings: Setting[]
+  ): Promise<ResponseResult> {
+    return firstValueFrom(
+      this.http.post<ResponseResult>(
+        '/api/admin/settings/set',
+        settings
+      )
+    );
   }
 
-  getReports(status: string): Promise<Reports> {
-    return firstValueFrom(this.http.get<Reports>('/api/admin/reports/get', {
-      params: {
-        status: status
-      }
-    }));
+  // =========================================================
+  // REPORTS
+  // =========================================================
+
+  getReports(
+    status: string
+  ): Promise<Reports> {
+    return firstValueFrom(
+      this.http.get<Reports>(
+        '/api/admin/reports/get',
+        {
+          params: {
+            status
+          }
+        }
+      )
+    );
   }
 
-  setReports(report: Report): Promise<ResponseResult> {
-    return firstValueFrom(this.http.post<ResponseResult>('/api/admin/reports/set', report));
+  setReports(
+    report: Report
+  ): Promise<ResponseResult> {
+    return firstValueFrom(
+      this.http.post<ResponseResult>(
+        '/api/admin/reports/set',
+        report
+      )
+    );
   }
 
-  async getScheduledMessages(reload?: boolean): Promise<ChatMessage[]> {
-    if (this.schedulingMessages && !reload) {
+  // =========================================================
+  // SCHEDULED MESSAGES
+  // =========================================================
+
+  async getScheduledMessages(
+    reload?: boolean
+  ): Promise<ChatMessage[]> {
+
+    if (
+      this.schedulingMessages &&
+      !reload
+    ) {
       return this.schedulingMessages;
     }
 
     try {
-      this.schedulingMessages = await firstValueFrom(this.http.get<ChatMessage[]>('/api/admin/scheduled-messages/get'));
+
+      this.schedulingMessages =
+        await firstValueFrom(
+          this.http.get<ChatMessage[]>(
+            '/api/admin/scheduled-messages/get'
+          )
+        );
+
       return this.schedulingMessages;
+
     } catch {
+
       return this.schedulingMessages || [];
+
     }
   }
 
-  setScheduledMessage(message: ChatMessage): Promise<ResponseResult> {
-    this.schedulingMessages?.unshift(message);
+  setScheduledMessage(
+    message: ChatMessage
+  ): Promise<ResponseResult> {
+
+    this.schedulingMessages?.unshift(
+      message
+    );
+
     return this.updateSchedulingMessages();
   }
 
-  editScheduledMessage(message: ChatMessage): Promise<ResponseResult> {
-    if (message.id === undefined || !this.schedulingMessages) return Promise.reject('Message ID is undefined');
-    this.schedulingMessages[message.id] = message;
+  editScheduledMessage(
+    message: ChatMessage
+  ): Promise<ResponseResult> {
+
+    if (
+      message.id === undefined ||
+      !this.schedulingMessages
+    ) {
+      return Promise.reject(
+        'Message ID is undefined'
+      );
+    }
+
+    this.schedulingMessages[
+      message.id
+    ] = message;
+
     return this.updateSchedulingMessages();
   }
 
-  deleteScheduledMessage(id: number | undefined): Promise<ResponseResult> {
-    if (id === undefined || !this.schedulingMessages) return Promise.reject('Message ID is undefined');
-    this.schedulingMessages.splice(id, 1);
+  deleteScheduledMessage(
+    id: number | undefined
+  ): Promise<ResponseResult> {
+
+    if (
+      id === undefined ||
+      !this.schedulingMessages
+    ) {
+      return Promise.reject(
+        'Message ID is undefined'
+      );
+    }
+
+    this.schedulingMessages.splice(
+      id,
+      1
+    );
+
     return this.updateSchedulingMessages();
   }
 
-  private updateSchedulingMessages(): Promise<ResponseResult> {
-    return firstValueFrom(this.http.post<ResponseResult>('/api/admin/scheduled-messages/update', this.schedulingMessages));
+  private updateSchedulingMessages():
+    Promise<ResponseResult> {
+
+    return firstValueFrom(
+      this.http.post<ResponseResult>(
+        '/api/admin/scheduled-messages/update',
+        this.schedulingMessages
+      )
+    );
   }
 }
