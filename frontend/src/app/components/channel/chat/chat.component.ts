@@ -32,25 +32,15 @@ import {
   ChatService
 } from '../../../services/chat.service';
 
-import {
-  AuthService
-} from '../../../services/auth.service';
+import { AuthService } from '../../../services/auth.service';
 
-import {
-  ActivatedRoute
-} from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 
-import {
-  NotificationsService
-} from '../../../services/notifications.service';
+import { NotificationsService } from '../../../services/notifications.service';
 
-import {
-  User
-} from '../../../models/user.model';
+import { User } from '../../../models/user.model';
 
-import {
-  AdminService
-} from '../../../services/admin.service';
+import { AdminService } from '../../../services/admin.service';
 
 
 type LoadMsgOpt = {
@@ -98,52 +88,63 @@ export class ChatComponent
 
   scheduledMessages!: ChatMessage[];
 
-  hideScheduledMessages: boolean = false;
+  hideScheduledMessages = false;
 
   userInfo?: User;
 
-  isLoading: boolean = false;
+  isLoading = false;
 
-  offset: number = 0;
+  offset = 0;
 
-  limit: number = 20;
+  limit = 20;
 
-  hasOldMessages: boolean = true;
+  hasOldMessages = true;
 
-  hasNewMessages: boolean = false;
+  hasNewMessages = false;
 
-  thereNewMessages: boolean = false;
+  thereNewMessages = false;
 
-  showScrollToBottom: boolean = false;
+  showScrollToBottom = false;
 
-  private lastHeartbeat: number = Date.now();
+  private lastHeartbeat = Date.now();
 
   private subLastHeartbeat: any;
 
-  lastReadMessageId: number = 0;
+  lastReadMessageId = 0;
 
 
   constructor(
     private chatService: ChatService,
-
     private _authService: AuthService,
-
     private _adminService: AdminService,
-
     private toastrService: NbToastrService,
-
     private notificationService: NotificationsService,
-
     private zone: NgZone,
-
     private router: ActivatedRoute
   ) {
 
-    this._adminService.schedulingBusObservable.subscribe(() => {
+    this._adminService
+      .schedulingBusObservable
+      .subscribe(() => {
 
-      this.loadScheduledMessages();
+        this.loadScheduledMessages();
 
-    });
+      });
+
+  }
+
+
+  private sortMessages(): void {
+
+    this.messages =
+      this.messages
+        .filter(message =>
+          message &&
+          Number.isFinite(message.id)
+        )
+        .sort((a, b) =>
+          Number(a.id) - Number(b.id)
+        );
 
   }
 
@@ -158,7 +159,6 @@ export class ChatComponent
 
   @HostListener('document:keydown', ['$event'])
   @HostListener('window:click', ['$event'])
-
   onUserAction(
     event: MouseEvent | KeyboardEvent
   ) {
@@ -175,6 +175,10 @@ export class ChatComponent
 
       const quoteId =
         quoteElement.getAttribute('quote-id');
+
+      if (!quoteId) {
+        return;
+      }
 
       this.scrollToId({
         messageId: Number(quoteId),
@@ -199,16 +203,18 @@ export class ChatComponent
       element.scrollIntoView({
         behavior: opt.smooth
           ? 'smooth'
-          : 'instant',
+          : 'auto',
         block: 'center'
       });
 
       this.removeMsgMarked();
 
       if (opt.mark) {
+
         element.classList.add(
           'mark_message'
         );
+
       }
 
     } else {
@@ -228,7 +234,7 @@ export class ChatComponent
 
     document
       .querySelectorAll('.mark_message')
-      .forEach((el) => {
+      .forEach(el => {
 
         el.classList.remove(
           'mark_message'
@@ -246,21 +252,21 @@ export class ChatComponent
       this.router.fragment.subscribe(
         fragment => {
 
-          if (fragment) {
-
-            const messageId =
-              Number(fragment);
-
-            if (!Number.isInteger(messageId)) {
-              return;
-            }
-
-            this.scrollToId({
-              messageId,
-              mark: true
-            });
-
+          if (!fragment) {
+            return;
           }
+
+          const messageId =
+            Number(fragment);
+
+          if (!Number.isInteger(messageId)) {
+            return;
+          }
+
+          this.scrollToId({
+            messageId,
+            mark: true
+          });
 
         }
       );
@@ -281,12 +287,14 @@ export class ChatComponent
 
     this._authService
       .loadUserInfo()
-      .then((res) => {
+      .then(res => {
 
         this.userInfo = res;
 
         if (
-          this.userInfo?.privileges?.['writer']
+          this.userInfo
+            ?.privileges
+            ?.['writer']
         ) {
 
           this.loadScheduledMessages();
@@ -310,6 +318,8 @@ export class ChatComponent
           return;
         }
 
+        this.sortMessages();
+
         const lastReadMsg =
           Number(
             localStorage.getItem(
@@ -317,13 +327,18 @@ export class ChatComponent
             )
           );
 
-        const lastMsgId =
-          this.messages[0].id!;
+        const newestMessage =
+          this.messages[
+            this.messages.length - 1
+          ];
+
+        const newestMessageId =
+          Number(newestMessage.id);
 
 
         if (
           lastReadMsg &&
-          lastReadMsg < lastMsgId
+          lastReadMsg < newestMessageId
         ) {
 
           setTimeout(() => {
@@ -347,7 +362,7 @@ export class ChatComponent
 
 
         this.setLastReadMessage(
-          lastMsgId.toString()
+          newestMessageId.toString()
         );
 
       });
@@ -355,9 +370,7 @@ export class ChatComponent
   }
 
 
-  async setLastReadMessage(
-    id: string
-  ) {
+  async setLastReadMessage(id: string) {
 
     localStorage.setItem(
       'lastReadMessage',
@@ -379,61 +392,105 @@ export class ChatComponent
         this.lastHeartbeat =
           Date.now();
 
+        let data: any;
 
-        const message =
-          JSON.parse(event.data);
+        try {
+
+          data =
+            JSON.parse(event.data);
+
+        } catch {
+
+          return;
+
+        }
 
 
-        switch (message.type) {
+        switch (data.type) {
 
-          case 'new-message':
+          case 'new-message': {
 
-            if (this.hasNewMessages) {
+            const newMessage =
+              data.message as ChatMessage;
+
+            if (!newMessage) {
               break;
             }
 
-
             this.zone.run(() => {
 
-              this.messages.unshift(
-                message.message
-              );
+              const exists =
+                this.messages.some(
+                  message =>
+                    message.id ===
+                    newMessage.id
+                );
+
+              if (!exists) {
+
+                this.messages.push(
+                  newMessage
+                );
+
+              }
+
+              this.sortMessages();
 
 
               this.thereNewMessages =
-                !(
-                  message.message.author ===
-                  this.userInfo?.username
-                );
+                newMessage.author !==
+                this.userInfo?.username;
 
 
               this.setLastReadMessage(
-                message.message.id!.toString()
+                String(newMessage.id)
               );
 
 
               if (
-                this.userInfo?.privileges?.['writer'] &&
+                this.userInfo
+                  ?.privileges
+                  ?.['writer'] &&
                 this.scheduledMessages &&
-                message.message.author ===
+                newMessage.author ===
                 'Scheduled'
               ) {
 
-                this.loadScheduledMessages(
-                  true
-                );
+                this.loadScheduledMessages(true);
+
+              }
+
+
+              const distanceFromBottom =
+                document.documentElement.scrollHeight -
+                window.innerHeight -
+                window.scrollY;
+
+
+              if (
+                distanceFromBottom < 150
+              ) {
+
+                setTimeout(() => {
+
+                  this.scrollToBottom(true);
+
+                }, 50);
 
               }
 
             });
 
             break;
+          }
 
 
-          case 'delete-message':
+          case 'delete-message': {
 
             if (
-              this.userInfo?.privileges?.['writer']
+              this.userInfo
+                ?.privileges
+                ?.['writer']
             ) {
 
               this.zone.run(() => {
@@ -442,9 +499,8 @@ export class ChatComponent
                   this.messages.findIndex(
                     m =>
                       m.id ===
-                      message.message.id
+                      data.message.id
                   );
-
 
                 if (index !== -1) {
 
@@ -452,14 +508,13 @@ export class ChatComponent
                     true;
 
                   this.messages[index].last_edit =
-                    message.message.last_edit;
+                    data.message.last_edit;
 
                 }
 
               });
 
               break;
-
             }
 
 
@@ -469,15 +524,16 @@ export class ChatComponent
                 this.messages.filter(
                   m =>
                     m.id !==
-                    message.message.id
+                    data.message.id
                 );
 
             });
 
             break;
+          }
 
 
-          case 'edit-message':
+          case 'edit-message': {
 
             this.zone.run(() => {
 
@@ -485,23 +541,25 @@ export class ChatComponent
                 this.messages.findIndex(
                   m =>
                     m.id ===
-                    message.message.id
+                    data.message.id
                 );
-
 
               if (index !== -1) {
 
                 this.messages[index] =
-                  message.message;
+                  data.message;
 
               }
+
+              this.sortMessages();
 
             });
 
             break;
+          }
 
 
-          case 'reaction':
+          case 'reaction': {
 
             this.zone.run(() => {
 
@@ -509,28 +567,29 @@ export class ChatComponent
                 this.messages.findIndex(
                   m =>
                     m.id ===
-                    message.message.id
+                    data.message.id
                 );
-
 
               if (index !== -1) {
 
                 this.messages[index].reactions =
-                  message.message.reactions;
+                  data.message.reactions;
 
               }
 
             });
 
             break;
+          }
 
 
-          case 'heartbeat':
+          case 'heartbeat': {
 
             this.lastHeartbeat =
               Date.now();
 
             break;
+          }
 
         }
 
@@ -555,7 +614,6 @@ export class ChatComponent
     clearInterval(
       this.subLastHeartbeat
     );
-
 
     this.subLastHeartbeat =
       interval(10000)
@@ -591,7 +649,9 @@ export class ChatComponent
       distanceFromBottom > 100;
 
 
-    if (distanceFromBottom < 10) {
+    if (
+      distanceFromBottom < 10
+    ) {
 
       this.thereNewMessages =
         false;
@@ -620,13 +680,19 @@ export class ChatComponent
     setTimeout(() => {
 
       window.scrollTo({
-        top: document.body.scrollHeight,
-        behavior: smooth
-          ? 'smooth'
-          : 'instant'
+
+        top:
+          document.documentElement
+            .scrollHeight,
+
+        behavior:
+          smooth
+            ? 'smooth'
+            : 'auto'
+
       });
 
-    }, 200);
+    }, 100);
 
 
     this.thereNewMessages =
@@ -678,16 +744,15 @@ export class ChatComponent
     ) {
 
       return;
-
     }
 
 
     let startId: number;
 
-    let resetList: boolean =
+    let resetList =
       opt.resetList || false;
 
-    let direction: string =
+    let direction =
       'desc';
 
 
@@ -700,7 +765,7 @@ export class ChatComponent
 
     const ids =
       this.messages
-        .map(m => m.id!)
+        .map(m => Number(m.id))
         .filter(id =>
           Number.isFinite(id)
         );
@@ -740,8 +805,7 @@ export class ChatComponent
 
           direction = 'asc';
 
-          opt.scrollDown =
-            true;
+          opt.scrollDown = true;
 
         } else if (
           opt.messageId > maxId
@@ -752,8 +816,7 @@ export class ChatComponent
 
           direction = 'asc';
 
-          opt.scrollDown =
-            true;
+          opt.scrollDown = true;
 
         } else {
 
@@ -794,8 +857,7 @@ export class ChatComponent
 
     try {
 
-      this.isLoading =
-        true;
+      this.isLoading = true;
 
 
       const response =
@@ -812,13 +874,22 @@ export class ChatComponent
 
         if (opt.scrollDown) {
 
-          resetList
-            ? this.messages =
-                response.reverse()
-            : this.messages.unshift(
-                ...response.reverse()
-              );
+          const newMessages =
+            [...response].reverse();
 
+
+          if (resetList) {
+
+            this.messages =
+              newMessages;
+
+          } else {
+
+            this.messages.unshift(
+              ...newMessages
+            );
+
+          }
 
           this.hasNewMessages =
             response.length >=
@@ -826,13 +897,18 @@ export class ChatComponent
 
         } else {
 
-          resetList
-            ? this.messages =
-                response
-            : this.messages.push(
-                ...response
-              );
+          if (resetList) {
 
+            this.messages =
+              [...response];
+
+          } else {
+
+            this.messages.push(
+              ...response
+            );
+
+          }
 
           this.hasOldMessages =
             response.length >=
@@ -841,9 +917,12 @@ export class ChatComponent
         }
 
 
+        this.sortMessages();
+
+
         const messageIds =
           this.messages
-            .map(m => m.id!)
+            .map(m => Number(m.id))
             .filter(id =>
               Number.isFinite(id)
             );
@@ -864,11 +943,16 @@ export class ChatComponent
           if (opt.messageId) {
 
             this.scrollToId({
+
               messageId:
                 opt.messageId,
-              smooth: false,
+
+              smooth:
+                false,
+
               mark:
                 opt.mark
+
             });
 
           }
@@ -886,8 +970,7 @@ export class ChatComponent
 
     } finally {
 
-      this.isLoading =
-        false;
+      this.isLoading = false;
 
     }
 
