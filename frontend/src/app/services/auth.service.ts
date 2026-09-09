@@ -11,6 +11,11 @@ interface GoogleAuthValues {
   googleClientId: string;
 }
 
+interface PasswordLoginResponse {
+  success: boolean;
+  status?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -85,6 +90,35 @@ export class AuthService {
         );
 
       return res.success;
+
+    } catch (err) {
+
+      this.userInfo =
+        undefined;
+
+      throw err;
+    }
+  }
+
+  async loginWithPassword(
+    email: string,
+    password: string
+  ) {
+
+    try {
+
+      const res =
+        await firstValueFrom(
+          this._http.post<PasswordLoginResponse>(
+            '/auth/password-login',
+            {
+              email,
+              password
+            }
+          )
+        );
+
+      return res;
 
     } catch (err) {
 
