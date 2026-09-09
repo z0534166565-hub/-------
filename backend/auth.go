@@ -979,10 +979,3 @@ func getUser(
 			"user is not approved",
 		)
 }
-```
-
-הסיבה לתיקון מאומתת בתיעוד של `redistore`: המתודות `Get` ו־`Save` משתמשות ב־`*sessions.Session`, כשה־`sessions` הוא `github.com/gorilla/sessions`.
-
-**עכשיו:** שמור את הקובץ → `Commit changes`. Render אמור להתחיל Build חדש אוטומטית.
-
-אם ה־Build הבא נכשל, שלח לי את השורות שמופיעות **אחרי `RUN go build -o the-channel .`**.
