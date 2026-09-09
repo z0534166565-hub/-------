@@ -2,15 +2,10 @@
   class="login-container"
   dir="rtl"
 >
-
   <nb-card class="login-card">
 
     <nb-card-header>
-
-      <h2>
-        כניסה לערוץ
-      </h2>
-
+      <h2>כניסה לערוץ</h2>
     </nb-card-header>
 
     <nb-card-body>
@@ -18,9 +13,7 @@
       @if (checkUserInfo || loading) {
 
         <div class="message">
-
           בודק את פרטי ההתחברות...
-
         </div>
 
       }
@@ -29,13 +22,9 @@
 
         <div class="message pending">
 
-          <div class="message-icon">
-            ⏳
-          </div>
+          <div class="message-icon">⏳</div>
 
-          <h3>
-            הבקשה נשלחה בהצלחה
-          </h3>
+          <h3>הבקשה נשלחה בהצלחה</h3>
 
           <p>
             חשבונך ממתין לאישור מנהל.
@@ -63,13 +52,9 @@
 
         <div class="message error">
 
-          <div class="message-icon">
-            ⚠️
-          </div>
+          <div class="message-icon">⚠️</div>
 
-          <h3>
-            ההתחברות נכשלה
-          </h3>
+          <h3>ההתחברות נכשלה</h3>
 
           <p>
             {{ errorMessage || 'נסה להתחבר שוב.' }}
@@ -140,9 +125,7 @@
               [disabled]="loading"
               (click)="loginWithPassword()"
             >
-
               כניסה עם אימייל וסיסמה
-
             </button>
 
           </div>
@@ -160,9 +143,7 @@
             [disabled]="loading"
             (click)="loginWithGoogle()"
           >
-
             כניסה באמצעות Google
-
           </button>
 
         </div>
@@ -172,5 +153,4 @@
     </nb-card-body>
 
   </nb-card>
-
 </div>
