@@ -6,6 +6,8 @@ type LocalAccount = {
   password: string;
   username: string;
   isAdmin?: boolean;
+  id?: number;
+  picture?: string;
 };
 
 @Injectable({
@@ -15,32 +17,37 @@ export class AuthService {
 
   public userInfo?: User;
 
-  private readonly accountsKey = 'channel_accounts';
-  private readonly currentUserKey = 'channel_current_user';
+  private readonly accountsKey =
+    'channel_accounts';
+
+  private readonly currentUserKey =
+    'channel_current_user';
 
   // ==========================================
-  // פרטי חשבון מנהל
-  // שנה כאן את הפרטים שאתה רוצה
+  // חשבון מנהל
   // ==========================================
 
   private readonly adminEmail =
     'Z0534166565@GMAIL.COM';
 
   private readonly adminPassword =
-    'Admin0556786311';
+    '0556786311';
 
   private readonly adminUsername =
     'מנהל';
 
 
   constructor() {
+
     this.restoreUser();
+
     this.ensureAdminAccount();
+
   }
 
 
   // ==========================================
-  // יצירת חשבון מנהל אוטומטית
+  // יצירת מנהל
   // ==========================================
 
   private ensureAdminAccount() {
@@ -49,7 +56,9 @@ export class AuthService {
       this.getAccounts();
 
     const adminEmail =
-      this.adminEmail.trim().toLowerCase();
+      this.adminEmail
+        .trim()
+        .toLowerCase();
 
     const existingAdmin =
       accounts.find(
@@ -71,23 +80,40 @@ export class AuthService {
     } else {
 
       accounts.push({
-        email: adminEmail,
-        password: this.adminPassword,
-        username: this.adminUsername,
-        isAdmin: true
+
+        email:
+          adminEmail,
+
+        password:
+          this.adminPassword,
+
+        username:
+          this.adminUsername,
+
+        isAdmin:
+          true,
+
+        id:
+          1,
+
+        picture:
+          ''
+
       });
 
     }
 
     this.saveAccounts(accounts);
+
   }
 
 
   // ==========================================
-  // קריאת חשבונות
+  // חשבונות
   // ==========================================
 
-  private getAccounts(): LocalAccount[] {
+  private getAccounts():
+    LocalAccount[] {
 
     try {
 
@@ -112,12 +138,9 @@ export class AuthService {
       return [];
 
     }
+
   }
 
-
-  // ==========================================
-  // שמירת חשבונות
-  // ==========================================
 
   private saveAccounts(
     accounts: LocalAccount[]
@@ -132,7 +155,7 @@ export class AuthService {
 
 
   // ==========================================
-  // שחזור משתמש מחובר
+  // שחזור משתמש
   // ==========================================
 
   private restoreUser() {
@@ -145,7 +168,12 @@ export class AuthService {
         );
 
       if (!data) {
+
+        this.userInfo =
+          undefined;
+
         return;
+
       }
 
       this.userInfo =
@@ -157,6 +185,7 @@ export class AuthService {
         undefined;
 
     }
+
   }
 
 
@@ -242,7 +271,14 @@ export class AuthService {
 
       username,
 
-      isAdmin: false
+      isAdmin:
+        false,
+
+      id:
+        Date.now(),
+
+      picture:
+        ''
 
     };
 
@@ -252,18 +288,10 @@ export class AuthService {
     this.saveAccounts(accounts);
 
 
-    const user = {
-
-      email,
-
-      username,
-
-      privileges: {
-        admin: false,
-        writer: false
-      }
-
-    } as User;
+    const user =
+      this.createUser(
+        account
+      );
 
 
     this.userInfo =
@@ -284,7 +312,50 @@ export class AuthService {
 
 
   // ==========================================
-  // כניסה עם אימייל וסיסמה
+  // יצירת User
+  // ==========================================
+
+  private createUser(
+    account: LocalAccount
+  ): User {
+
+    const isAdmin =
+      account.isAdmin === true;
+
+
+    return {
+
+      id:
+        account.id ??
+        Date.now(),
+
+      email:
+        account.email,
+
+      username:
+        account.username,
+
+      picture:
+        account.picture ??
+        '',
+
+      privileges: {
+
+        admin:
+          isAdmin,
+
+        writer:
+          isAdmin
+
+      }
+
+    } as User;
+
+  }
+
+
+  // ==========================================
+  // כניסה באימייל וסיסמה
   // ==========================================
 
   async loginWithPassword(
@@ -313,16 +384,16 @@ export class AuthService {
     if (!account) {
 
       return {
+
         success: false,
-        status: 'failed'
+
+        status:
+          'failed'
+
       };
 
     }
 
-
-    // ========================================
-    // בדיקה האם זה מנהל
-    // ========================================
 
     const isAdmin =
       account.isAdmin === true ||
@@ -332,25 +403,14 @@ export class AuthService {
           .toLowerCase();
 
 
-    const user = {
+    account.isAdmin =
+      isAdmin;
 
-      email:
-        account.email,
 
-      username:
-        account.username,
-
-      privileges: {
-
-        admin:
-          isAdmin,
-
-        writer:
-          isAdmin
-
-      }
-
-    } as User;
+    const user =
+      this.createUser(
+        account
+      );
 
 
     this.userInfo =
@@ -388,7 +448,7 @@ export class AuthService {
       success: false,
 
       status:
-        'disabled'
+        'google_not_configured'
 
     };
 
@@ -429,7 +489,7 @@ export class AuthService {
 
 
   // ==========================================
-  // טעינת פרטי המשתמש
+  // משתמש נוכחי
   // ==========================================
 
   async loadUserInfo():
@@ -443,13 +503,15 @@ export class AuthService {
 
 
   // ==========================================
-  // בדיקה האם המשתמש מנהל
+  // מנהל
   // ==========================================
 
   isAdmin(): boolean {
 
     return (
-      this.userInfo?.privileges?.['admin']
+      this.userInfo
+        ?.privileges
+        ?.['admin']
       === true
     );
 
@@ -457,13 +519,15 @@ export class AuthService {
 
 
   // ==========================================
-  // בדיקה האם המשתמש יכול לכתוב
+  // כותב
   // ==========================================
 
   isWriter(): boolean {
 
     return (
-      this.userInfo?.privileges?.['writer']
+      this.userInfo
+        ?.privileges
+        ?.['writer']
       === true
     );
 
