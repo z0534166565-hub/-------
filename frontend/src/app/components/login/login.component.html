@@ -13,10 +13,9 @@
 
     </nb-card-header>
 
-
     <nb-card-body>
 
-      @if (checkUserInfo) {
+      @if (checkUserInfo || loading) {
 
         <div class="message">
 
@@ -47,6 +46,15 @@
             תוכל להתחבר לערוץ.
           </p>
 
+          <button
+            nbButton
+            status="basic"
+            fullWidth
+            (click)="status = undefined"
+          >
+            חזרה למסך הכניסה
+          </button>
+
         </div>
 
       }
@@ -64,8 +72,17 @@
           </h3>
 
           <p>
-            נסה להתחבר שוב.
+            {{ errorMessage || 'נסה להתחבר שוב.' }}
           </p>
+
+          <button
+            nbButton
+            status="basic"
+            fullWidth
+            (click)="status = undefined"
+          >
+            חזרה למסך הכניסה
+          </button>
 
         </div>
 
@@ -76,17 +93,72 @@
         <div class="login-content">
 
           <p>
-            כדי להיכנס לערוץ יש להתחבר
-            באמצעות חשבון Google.
+            התחבר באמצעות אימייל וסיסמה
+            או באמצעות Google.
           </p>
 
+          <div class="password-login">
+
+            <div class="form-field">
+
+              <label for="login-email">
+                אימייל
+              </label>
+
+              <input
+                id="login-email"
+                type="email"
+                autocomplete="email"
+                placeholder="הזן את כתובת האימייל"
+                [(ngModel)]="email"
+              />
+
+            </div>
+
+            <div class="form-field">
+
+              <label for="login-password">
+                סיסמה
+              </label>
+
+              <input
+                id="login-password"
+                type="password"
+                autocomplete="current-password"
+                placeholder="הזן סיסמה"
+                [(ngModel)]="password"
+                (keyup.enter)="loginWithPassword()"
+              />
+
+            </div>
+
+            <button
+              nbButton
+              status="primary"
+              size="large"
+              fullWidth
+              [disabled]="loading"
+              (click)="loginWithPassword()"
+            >
+
+              כניסה עם אימייל וסיסמה
+
+            </button>
+
+          </div>
+
+          <div class="login-divider">
+            <span>או</span>
+          </div>
 
           <button
             nbButton
-            status="primary"
+            status="basic"
             size="large"
             fullWidth
-            (click)="login()"
+            class="login-google-button"
+            [disabled]="loading"
+            (click)="loginWithGoogle()"
           >
 
             כניסה באמצעות Google
