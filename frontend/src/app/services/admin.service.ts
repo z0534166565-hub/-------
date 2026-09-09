@@ -114,10 +114,9 @@ export class AdminService {
       // שימוש בברירת המחדל
     }
 
-    const statistics =
-      this.createDefaultStatistics();
-
-    return Promise.resolve(statistics);
+    return Promise.resolve(
+      this.createDefaultStatistics()
+    );
   }
 
   resetPeakStatistics(): Promise<ResponseResult> {
@@ -143,10 +142,11 @@ export class AdminService {
 
   private createDefaultStatistics(): Statistics {
     return {
-      views: 0,
-      messages: 0,
-      users: 0
-    } as Statistics;
+      usersAmount: 0,
+      connectedUsersAmount: 0,
+      peakSSEConnections: 0,
+      connectionsStatistics: []
+    } as unknown as Statistics;
   }
 
   // =========================================================
