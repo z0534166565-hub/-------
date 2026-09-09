@@ -1,5 +1,140 @@
+```scss
+.login-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+    font-family: 'Assistant', sans-serif;
+}
+
+.login-card {
+    width: 100%;
+    max-width: 430px;
+    margin: 0 auto;
+}
+
+.login-content {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.login-content p {
+    margin: 0;
+    text-align: center;
+    line-height: 1.7;
+}
+
+.login-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 4px 0;
+    color: #888;
+    font-size: 14px;
+}
+
+.login-divider::before,
+.login-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #ddd;
+}
+
+.password-login {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.form-field label {
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.form-field input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 11px 13px;
+    border: 1px solid #d5d5d5;
+    border-radius: 6px;
+    font-family: 'Assistant', sans-serif;
+    font-size: 16px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-field input:focus {
+    border-color: #3366ff;
+    box-shadow: 0 0 0 2px rgba(51, 102, 255, 0.12);
+}
+
+.form-field input::placeholder {
+    color: #999;
+}
+
+.password-login button,
+.login-content button {
+    font-family: 'Assistant', sans-serif;
+}
+
+.login-google-button {
+    margin-top: 2px;
+}
+
+.message {
+    text-align: center;
+    padding: 15px 5px;
+    font-family: 'Assistant', sans-serif;
+}
+
+.message-icon {
+    font-size: 38px;
+    margin-bottom: 10px;
+}
+
+.message h3 {
+    margin: 8px 0;
+    font-family: 'Assistant', sans-serif;
+}
+
+.message p {
+    margin: 7px 0;
+    line-height: 1.6;
+}
+
+.message.pending {
+    color: #555;
+}
+
+.message.error {
+    color: #b00020;
+}
+
+.alert-danger {
+    font-family: 'Assistant', sans-serif;
+    text-align: center;
+    margin-top: 4px;
+}
+
+.login-loading {
+    text-align: center;
+    padding: 10px;
+    font-family: 'Assistant', sans-serif;
+}
+
 h4,
 button,
 .alert-danger {
     font-family: 'Assistant', sans-serif;
 }
+```
