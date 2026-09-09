@@ -19,9 +19,14 @@ var rootStaticFolder = os.Getenv("ROOT_STATIC_FOLDER")
 func protectedWithPrivilege(Privilege Privilege, handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !checkPrivilege(r, Privilege) {
-			http.Error(w, "User not authorized or not privilege", http.StatusUnauthorized)
+			http.Error(
+				w,
+				"User not authorized or not privilege",
+				http.StatusUnauthorized,
+			)
 			return
 		}
+
 		handler(w, r)
 	}
 }
@@ -59,6 +64,7 @@ func main() {
 	}
 
 	store.SetMaxAge(60 * 60 * 24 * 30)
+
 	store.Options.HttpOnly = true
 
 	defer store.Close()
@@ -67,18 +73,13 @@ func main() {
 
 	r.Use(middleware.Logger)
 
-	// =========================================================
-	// API KEY
-	// =========================================================
+	// CORS עבור GitHub Pages -> Render
+	r.Use(corsMiddleware)
 
 	r.Post(
 		"/api/import/post",
 		addNewPost,
 	)
-
-	// =========================================================
-	// AUTH
-	// =========================================================
 
 	r.Get(
 		"/auth/google",
@@ -95,10 +96,6 @@ func main() {
 		logout,
 	)
 
-	// =========================================================
-	// FAVICON
-	// =========================================================
-
 	r.Get(
 		"/assets/favicon.ico",
 		getFavicon,
@@ -108,10 +105,6 @@ func main() {
 		"/favicon.ico",
 		getFavicon,
 	)
-
-	// =========================================================
-	// AUTHENTICATED ROUTES
-	// =========================================================
 
 	r.Group(func(r chi.Router) {
 
@@ -128,10 +121,6 @@ func main() {
 		)
 	})
 
-	// =========================================================
-	// GENERAL API
-	// =========================================================
-
 	r.Group(func(r chi.Router) {
 
 		r.Use(ifRequireAuth)
@@ -142,10 +131,6 @@ func main() {
 		)
 
 		r.Route("/api", func(api chi.Router) {
-
-			// -----------------------------------------------------
-			// CHANNEL
-			// -----------------------------------------------------
 
 			api.Get(
 				"/ads/settings",
@@ -192,25 +177,9 @@ func main() {
 				getUserInfo,
 			)
 
-			// -----------------------------------------------------
-			// ADMIN
-			// -----------------------------------------------------
-
 			api.Route("/admin", func(protected chi.Router) {
 
-				/*
-					כל הנתיבים בתוך admin חייבים
-					להשתמש ב-protectedWithPrivilege.
-
-					Writer  = כתיבת הודעות
-					Moderator = ניהול הערוץ
-					Admin = מנהל ראשי
-				*/
-
-				// =================================================
-				// WRITER
-				// =================================================
-
+				// Writer
 				protected.Post(
 					"/new",
 					protectedWithPrivilege(
@@ -259,10 +228,7 @@ func main() {
 					),
 				)
 
-				// =================================================
-				// MODERATOR
-				// =================================================
-
+				// Moderator
 				protected.Post(
 					"/edit-channel-info",
 					protectedWithPrivilege(
@@ -287,10 +253,7 @@ func main() {
 					),
 				)
 
-				// =================================================
-				// ADMIN
-				// =================================================
-
+				// Admin
 				protected.Post(
 					"/statistics/reset",
 					protectedWithPrivilege(
@@ -347,13 +310,6 @@ func main() {
 					),
 				)
 
-				// =================================================
-				// PENDING USERS
-				// =================================================
-
-				/*
-					רשימת משתמשים שמחכים לאישור.
-				*/
 				protected.Get(
 					"/pending-users",
 					protectedWithPrivilege(
@@ -362,9 +318,6 @@ func main() {
 					),
 				)
 
-				/*
-					אישור משתמש.
-				*/
 				protected.Post(
 					"/pending-users/approve",
 					protectedWithPrivilege(
@@ -373,9 +326,6 @@ func main() {
 					),
 				)
 
-				/*
-					דחיית משתמש.
-				*/
 				protected.Post(
 					"/pending-users/reject",
 					protectedWithPrivilege(
@@ -386,10 +336,6 @@ func main() {
 			})
 		})
 	})
-
-	// =========================================================
-	// STATIC FRONTEND
-	// =========================================================
 
 	if settingConfig.RootStaticFolder != "" {
 
@@ -408,27 +354,22 @@ func main() {
 		)
 	}
 
-	// =========================================================
-	// PROFILING
-	// =========================================================
-
 	go func() {
+
 		log.Fatal(
 			http.ListenAndServe(
 				"localhost:6060",
 				nil,
 			),
 		)
-	}()
 
-	// =========================================================
-	// SERVER
-	// =========================================================
+	}()
 
 	if err := http.ListenAndServe(
 		":"+os.Getenv("SERVER_PORT"),
 		r,
 	); err != nil {
+
 		log.Fatal(err)
 	}
 }
@@ -437,28 +378,35 @@ func serveSpaFile(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	htmlPath := filepath.Join(
-		settingConfig.RootStaticFolder,
-		"index.html",
-	)
 
-	content, err := os.ReadFile(htmlPath)
+	htmlPath :=
+		filepath.Join(
+			settingConfig.RootStaticFolder,
+			"index.html",
+		)
+
+	content, err :=
+		os.ReadFile(htmlPath)
 
 	if err != nil {
+
 		http.Error(
 			w,
 			"File not found",
 			http.StatusNotFound,
 		)
+
 		return
 	}
 
 	if settingConfig.CustomTitle != "" {
-		content = bytes.ReplaceAll(
-			content,
-			[]byte("<title></title>"),
-			[]byte(settingConfig.CustomTitle),
-		)
+
+		content =
+			bytes.ReplaceAll(
+				content,
+				[]byte("<title></title>"),
+				[]byte(settingConfig.CustomTitle),
+			)
 	}
 
 	w.Header().Set(
