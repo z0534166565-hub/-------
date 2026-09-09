@@ -79,17 +79,47 @@ class LocalEventSource implements EventSource {
     this.readyState = this.CLOSED;
   }
 
+  addEventListener<K extends keyof EventSourceEventMap>(
+    type: K,
+    listener: (
+      this: EventSource,
+      ev: EventSourceEventMap[K]
+    ) => any,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+
+  addEventListener(
+    type: string,
+    listener: any,
     options?: boolean | AddEventListenerOptions
   ): void {
     // אין חיבור שרת מקומי.
   }
 
+  removeEventListener<K extends keyof EventSourceEventMap>(
+    type: K,
+    listener: (
+      this: EventSource,
+      ev: EventSourceEventMap[K]
+    ) => any,
+    options?: boolean | EventListenerOptions
+  ): void;
+
   removeEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | EventListenerOptions
+  ): void;
+
+  removeEventListener(
+    type: string,
+    listener: any,
     options?: boolean | EventListenerOptions
   ): void {
     // אין חיבור שרת מקומי.
@@ -101,7 +131,10 @@ class LocalEventSource implements EventSource {
     }
 
     if (event.type === 'open') {
-      this.onopen?.call(this, event);
+      this.onopen?.call(
+        this,
+        event
+      );
     }
 
     if (event.type === 'message') {
@@ -112,7 +145,10 @@ class LocalEventSource implements EventSource {
     }
 
     if (event.type === 'error') {
-      this.onerror?.call(this, event);
+      this.onerror?.call(
+        this,
+        event
+      );
     }
 
     return true;
@@ -620,6 +656,7 @@ export class ChatService {
 
     if (this.eventSource) {
       this.eventSource.close();
+
       this.eventSource =
         undefined;
     }
