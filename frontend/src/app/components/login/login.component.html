@@ -5,38 +5,75 @@
   <nb-card class="login-card">
 
     <nb-card-header>
+
       <h2>
-        {{ showRegister ? 'הרשמה לערוץ' : 'כניסה לערוץ' }}
+
+        {{
+          showForgotPassword
+            ? 'איפוס סיסמה'
+            : (
+                showRegister
+                  ? 'הרשמה לערוץ'
+                  : 'כניסה לערוץ'
+              )
+        }}
+
       </h2>
+
     </nb-card-header>
 
+
     <nb-card-body>
+
+
+      <!-- ================================= -->
+      <!-- טעינה -->
+      <!-- ================================= -->
 
       @if (checkUserInfo || loading) {
 
         <div class="message">
-          {{ loading ? 'מתחבר...' : 'בודק את פרטי ההתחברות...' }}
+
+          {{
+            loading
+              ? 'מתחבר...'
+              : 'בודק את פרטי ההתחברות...'
+          }}
+
         </div>
 
       }
+
+
+      <!-- ================================= -->
+      <!-- המתנה לאישור -->
+      <!-- ================================= -->
 
       @else if (status === 'pending') {
 
         <div class="message pending">
 
-          <div class="message-icon">⏳</div>
+          <div class="message-icon">
+            ⏳
+          </div>
 
-          <h3>הבקשה נשלחה בהצלחה</h3>
+          <h3>
+            ממתין לאישור מנהל
+          </h3>
 
           <p>
-            חשבונך ממתין לאישור מנהל.
+            {{
+              errorMessage ||
+              'החשבון ממתין לאישור מנהל.'
+            }}
           </p>
+
 
           <button
             nbButton
             status="basic"
             fullWidth
-            (click)="status = undefined"
+            (click)="showLogin()"
           >
             חזרה למסך הכניסה
           </button>
@@ -45,19 +82,44 @@
 
       }
 
+
+      <!-- ================================= -->
+      <!-- שגיאה -->
+      <!-- ================================= -->
+
       @else if (status === 'failed') {
 
         <div class="message error">
 
-          <div class="message-icon">⚠️</div>
+          <div class="message-icon">
+            ⚠️
+          </div>
+
 
           <h3>
-            {{ showRegister ? 'ההרשמה נכשלה' : 'ההתחברות נכשלה' }}
+
+            {{
+              showRegister
+                ? 'ההרשמה נכשלה'
+                : (
+                    showForgotPassword
+                      ? 'איפוס הסיסמה נכשל'
+                      : 'ההתחברות נכשלה'
+                  )
+            }}
+
           </h3>
 
+
           <p>
-            {{ errorMessage || 'נסה שוב.' }}
+
+            {{
+              errorMessage ||
+              'נסה שוב.'
+            }}
+
           </p>
+
 
           <button
             nbButton
@@ -72,6 +134,81 @@
 
       }
 
+
+      <!-- ================================= -->
+      <!-- שכחתי סיסמה -->
+      <!-- ================================= -->
+
+      @else if (showForgotPassword) {
+
+        <div class="login-content">
+
+          <p>
+            הזן את כתובת האימייל של החשבון שלך
+          </p>
+
+
+          <div class="password-login">
+
+
+            <div class="form-field">
+
+              <label for="forgot-email">
+                אימייל
+              </label>
+
+
+              <input
+                id="forgot-email"
+                type="email"
+                autocomplete="email"
+                placeholder="הזן את כתובת האימייל"
+                [(ngModel)]="forgotEmail"
+                (keyup.enter)="requestPasswordReset()"
+              />
+
+            </div>
+
+
+            <button
+              nbButton
+              status="primary"
+              size="large"
+              fullWidth
+              [disabled]="loading"
+              (click)="requestPasswordReset()"
+            >
+              שליחת בקשת איפוס
+            </button>
+
+
+          </div>
+
+
+          <div class="login-divider">
+            <span>נזכרת בסיסמה?</span>
+          </div>
+
+
+          <button
+            nbButton
+            status="basic"
+            size="large"
+            fullWidth
+            (click)="showLogin()"
+          >
+            חזרה לכניסה
+          </button>
+
+        </div>
+
+      }
+
+
+      <!-- ================================= -->
+      <!-- הרשמה -->
+      <!-- ================================= -->
+
       @else if (showRegister) {
 
         <div class="login-content">
@@ -80,13 +217,16 @@
             צור חשבון חדש
           </p>
 
+
           <div class="password-login">
+
 
             <div class="form-field">
 
               <label for="register-username">
                 שם משתמש
               </label>
+
 
               <input
                 id="register-username"
@@ -98,11 +238,13 @@
 
             </div>
 
+
             <div class="form-field">
 
               <label for="register-email">
                 אימייל
               </label>
+
 
               <input
                 id="register-email"
@@ -114,11 +256,13 @@
 
             </div>
 
+
             <div class="form-field">
 
               <label for="register-password">
                 סיסמה
               </label>
+
 
               <input
                 id="register-password"
@@ -131,11 +275,13 @@
 
             </div>
 
+
             <div class="form-field">
 
               <label for="register-password-confirm">
                 אימות סיסמה
               </label>
+
 
               <input
                 id="register-password-confirm"
@@ -148,6 +294,7 @@
 
             </div>
 
+
             <button
               nbButton
               status="primary"
@@ -159,25 +306,34 @@
               הרשמה
             </button>
 
+
           </div>
+
 
           <div class="login-divider">
             <span>כבר יש לך חשבון?</span>
           </div>
+
 
           <button
             nbButton
             status="basic"
             size="large"
             fullWidth
-            (click)="showRegister = false; status = undefined"
+            (click)="showLogin()"
           >
             כניסה לחשבון
           </button>
 
+
         </div>
 
       }
+
+
+      <!-- ================================= -->
+      <!-- כניסה -->
+      <!-- ================================= -->
 
       @else {
 
@@ -187,13 +343,16 @@
             התחבר באמצעות אימייל וסיסמה
           </p>
 
+
           <div class="password-login">
+
 
             <div class="form-field">
 
               <label for="login-email">
                 אימייל
               </label>
+
 
               <input
                 id="login-email"
@@ -205,11 +364,13 @@
 
             </div>
 
+
             <div class="form-field">
 
               <label for="login-password">
                 סיסמה
               </label>
+
 
               <input
                 id="login-password"
@@ -222,6 +383,7 @@
 
             </div>
 
+
             <button
               nbButton
               status="primary"
@@ -233,21 +395,36 @@
               כניסה עם אימייל וסיסמה
             </button>
 
+
+            <button
+              nbButton
+              status="basic"
+              size="small"
+              fullWidth
+              (click)="showForgotPasswordScreen()"
+            >
+              שכחתי סיסמה
+            </button>
+
+
           </div>
+
 
           <div class="login-divider">
             <span>אין לך חשבון?</span>
           </div>
+
 
           <button
             nbButton
             status="basic"
             size="large"
             fullWidth
-            (click)="showRegister = true; status = undefined"
+            (click)="showRegistration()"
           >
             יצירת חשבון חדש
           </button>
+
 
           <button
             nbButton
@@ -261,11 +438,14 @@
             כניסה באמצעות Google
           </button>
 
+
         </div>
 
       }
 
+
     </nb-card-body>
 
   </nb-card>
+
 </div>
