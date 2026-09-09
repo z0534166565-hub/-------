@@ -1,3 +1,4 @@
+```go
 package main
 
 import (
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/boj/redistore"
+	"github.com/gorilla/sessions"
 	"github.com/icza/dyno"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/oauth2"
@@ -139,7 +141,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 	GitHub Pages -> Render.
 */
 func configureSessionCookie(
-	session *redistore.Session,
+	session *sessions.Session,
 ) {
 
 	session.Options.HttpOnly = true
@@ -167,9 +169,9 @@ func getGoogleAuthValues(
 
 	authValues :=
 		GoogleAuthValues{
-			GoogleOauthUrl: googleOAuthUrl,
+			GoogleOauthUrl:   googleOAuthUrl,
 			GoogleOauthScope: googleOAuthScopes,
-			GoogleClientId: googleOAuthClientId,
+			GoogleClientId:   googleOAuthClientId,
 		}
 
 	w.Header().Set(
@@ -977,3 +979,10 @@ func getUser(
 			"user is not approved",
 		)
 }
+```
+
+הסיבה לתיקון מאומתת בתיעוד של `redistore`: המתודות `Get` ו־`Save` משתמשות ב־`*sessions.Session`, כשה־`sessions` הוא `github.com/gorilla/sessions`.
+
+**עכשיו:** שמור את הקובץ → `Commit changes`. Render אמור להתחיל Build חדש אוטומטית.
+
+אם ה־Build הבא נכשל, שלח לי את השורות שמופיעות **אחרי `RUN go build -o the-channel .`**.
