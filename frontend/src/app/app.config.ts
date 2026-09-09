@@ -9,7 +9,10 @@ import {
   withHashLocation
 } from '@angular/router';
 
-import { provideHttpClient } from '@angular/common/http';
+import {
+  provideHttpClient,
+  withInterceptors
+} from '@angular/common/http';
 
 import { routes } from './app.routes';
 
@@ -54,6 +57,8 @@ import {
   withDefaultRegisterables
 } from 'ng2-charts';
 
+import { apiInterceptor } from './api.interceptor';
+
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -62,19 +67,25 @@ export const appConfig: ApplicationConfig = {
       eventCoalescing: true
     }),
 
-    // חשוב: Hash Routing מתאים ל-GitHub Pages
     provideRouter(
       routes,
       withHashLocation()
     ),
 
-    provideHttpClient(),
+    provideHttpClient(
+      withInterceptors([
+        apiInterceptor
+      ])
+    ),
 
     provideAnimationsAsync(),
 
-    provideMarkdown(MarkdownConfig),
+    provideMarkdown(
+      MarkdownConfig
+    ),
 
     provideIcons({
+
       heroBold,
       heroItalic,
       heroUnderline,
@@ -86,12 +97,15 @@ export const appConfig: ApplicationConfig = {
       heroXMark,
       heroLockClosed,
       heroLockOpen
+
     }),
 
     importProvidersFrom(
 
       NbThemeModule.forRoot(
-        { name: 'custom' },
+        {
+          name: 'custom'
+        },
         undefined,
         undefined,
         NbLayoutDirection.RTL
@@ -106,7 +120,8 @@ export const appConfig: ApplicationConfig = {
       NbDialogModule.forRoot(),
 
       NbToastrModule.forRoot({
-        position: NbGlobalLogicalPosition.TOP_START
+        position:
+          NbGlobalLogicalPosition.TOP_START
       }),
 
       NgIconsModule,
