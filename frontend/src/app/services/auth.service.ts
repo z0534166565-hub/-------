@@ -2,12 +2,22 @@ import { Injectable } from '@angular/core';
 import { User } from '../models/user.model';
 
 type LocalAccount = {
+  id: string;
   email: string;
   password: string;
   username: string;
-  isAdmin?: boolean;
-  id?: number;
-  picture?: string;
+
+  // משתמש שאושר יכול להיכנס
+  approved: boolean;
+
+  // מנהל
+  isAdmin: boolean;
+
+  // הרשאות
+  writer: boolean;
+
+  // איפוס סיסמה
+  resetRequested: boolean;
 };
 
 @Injectable({
@@ -23,15 +33,20 @@ export class AuthService {
   private readonly currentUserKey =
     'channel_current_user';
 
+
   // ==========================================
-  // חשבון מנהל
+  // פרטי מנהל
   // ==========================================
 
   private readonly adminEmail =
     'Z0534166565@GMAIL.COM';
 
-  private readonly adminPassword =
-    '0556786311';
+  /*
+   * 123456.
+   *
+   * קבע את הסיסמה של חשבון המנהל דרך
+   * localStorage / כלי הניהול המקומי.
+   */
 
   private readonly adminUsername =
     'מנהל';
@@ -39,9 +54,9 @@ export class AuthService {
 
   constructor() {
 
-    this.restoreUser();
-
     this.ensureAdminAccount();
+
+    this.restoreUser();
 
   }
 
@@ -55,53 +70,72 @@ export class AuthService {
     const accounts =
       this.getAccounts();
 
-    const adminEmail =
+    const email =
       this.adminEmail
         .trim()
         .toLowerCase();
 
-    const existingAdmin =
+
+    const existing =
       accounts.find(
         account =>
-          account.email === adminEmail
+          account.email === email
       );
 
-    if (existingAdmin) {
 
-      existingAdmin.password =
-        this.adminPassword;
+    if (existing) {
 
-      existingAdmin.username =
+      existing.isAdmin = true;
+
+      existing.approved = true;
+
+      existing.writer = true;
+
+      existing.username =
         this.adminUsername;
 
-      existingAdmin.isAdmin =
-        true;
+      this.saveAccounts(accounts);
 
-    } else {
-
-      accounts.push({
-
-        email:
-          adminEmail,
-
-        password:
-          this.adminPassword,
-
-        username:
-          this.adminUsername,
-
-        isAdmin:
-          true,
-
-        id:
-          1,
-
-        picture:
-          ''
-
-      });
+      return;
 
     }
+
+
+    /*
+     * חשבון המנהל נוצר ללא סיסמה מוגדרת כאן.
+     * אם אין חשבון כזה עדיין, צריך ליצור אותו
+     * דרך registerAdmin().
+     */
+
+    const admin: LocalAccount = {
+
+      id:
+        'admin-' +
+        Date.now().toString(),
+
+      email,
+
+      password: '',
+
+      username:
+        this.adminUsername,
+
+      approved:
+        true,
+
+      isAdmin:
+        true,
+
+      writer:
+        true,
+
+      resetRequested:
+        false
+
+    };
+
+
+    accounts.push(admin);
 
     this.saveAccounts(accounts);
 
@@ -109,7 +143,7 @@ export class AuthService {
 
 
   // ==========================================
-  // חשבונות
+  // קריאת חשבונות
   // ==========================================
 
   private getAccounts():
@@ -122,16 +156,66 @@ export class AuthService {
           this.accountsKey
         );
 
+
       if (!data) {
+
         return [];
+
       }
+
 
       const accounts =
         JSON.parse(data);
 
-      return Array.isArray(accounts)
-        ? accounts
-        : [];
+
+      if (!Array.isArray(accounts)) {
+
+        return [];
+
+      }
+
+
+      return accounts.map(
+        (account: any) => ({
+
+          id:
+            String(
+              account.id ??
+              Date.now()
+            ),
+
+          email:
+            String(
+              account.email ??
+              ''
+            ),
+
+          password:
+            String(
+              account.password ??
+              ''
+            ),
+
+          username:
+            String(
+              account.username ??
+              ''
+            ),
+
+          approved:
+            account.approved === true,
+
+          isAdmin:
+            account.isAdmin === true,
+
+          writer:
+            account.writer === true,
+
+          resetRequested:
+            account.resetRequested === true
+
+        })
+      );
 
     } catch {
 
@@ -142,13 +226,20 @@ export class AuthService {
   }
 
 
+  // ==========================================
+  // שמירת חשבונות
+  // ==========================================
+
   private saveAccounts(
     accounts: LocalAccount[]
   ) {
 
     localStorage.setItem(
+
       this.accountsKey,
+
       JSON.stringify(accounts)
+
     );
 
   }
@@ -167,6 +258,7 @@ export class AuthService {
           this.currentUserKey
         );
 
+
       if (!data) {
 
         this.userInfo =
@@ -175,6 +267,7 @@ export class AuthService {
         return;
 
       }
+
 
       this.userInfo =
         JSON.parse(data);
@@ -185,6 +278,43 @@ export class AuthService {
         undefined;
 
     }
+
+  }
+
+
+  // ==========================================
+  // יצירת User
+  // ==========================================
+
+  private createUser(
+    account: LocalAccount
+  ): User {
+
+    return {
+
+      id:
+        account.id,
+
+      email:
+        account.email,
+
+      username:
+        account.username,
+
+      picture:
+        '',
+
+      privileges: {
+
+        admin:
+          account.isAdmin,
+
+        writer:
+          account.writer
+
+      }
+
+    } as User;
 
   }
 
@@ -211,9 +341,26 @@ export class AuthService {
     if (!email) {
 
       return {
+
         success: false,
+
         message:
           'יש להזין כתובת אימייל.'
+
+      };
+
+    }
+
+
+    if (!email.includes('@')) {
+
+      return {
+
+        success: false,
+
+        message:
+          'כתובת האימייל אינה תקינה.'
+
       };
 
     }
@@ -222,9 +369,12 @@ export class AuthService {
     if (!username) {
 
       return {
+
         success: false,
+
         message:
           'יש להזין שם משתמש.'
+
       };
 
     }
@@ -233,9 +383,12 @@ export class AuthService {
     if (password.length < 6) {
 
       return {
+
         success: false,
+
         message:
           'הסיסמה חייבת להכיל לפחות 6 תווים.'
+
       };
 
     }
@@ -255,9 +408,12 @@ export class AuthService {
     if (exists) {
 
       return {
+
         success: false,
+
         message:
           'כבר קיים משתמש עם כתובת האימייל הזו.'
+
       };
 
     }
@@ -265,20 +421,29 @@ export class AuthService {
 
     const account: LocalAccount = {
 
+      id:
+        'user-' +
+        Date.now().toString(),
+
       email,
 
       password,
 
       username,
 
+      // חשוב:
+      // משתמש חדש אינו מאושר עדיין
+      approved:
+        false,
+
       isAdmin:
         false,
 
-      id:
-        Date.now(),
+      writer:
+        false,
 
-      picture:
-        ''
+      resetRequested:
+        false
 
     };
 
@@ -288,74 +453,29 @@ export class AuthService {
     this.saveAccounts(accounts);
 
 
-    const user =
-      this.createUser(
-        account
-      );
-
-
-    this.userInfo =
-      user;
-
-
-    localStorage.setItem(
-      this.currentUserKey,
-      JSON.stringify(user)
-    );
-
+    /*
+     * לא מחברים את המשתמש אוטומטית.
+     *
+     * הוא חייב להמתין לאישור מנהל.
+     */
 
     return {
-      success: true
+
+      success: false,
+
+      status:
+        'pending',
+
+      message:
+        'ההרשמה התקבלה. החשבון ממתין לאישור מנהל.'
+
     };
 
   }
 
 
   // ==========================================
-  // יצירת User
-  // ==========================================
-
-  private createUser(
-    account: LocalAccount
-  ): User {
-
-    const isAdmin =
-      account.isAdmin === true;
-
-
-    return {
-
-      id:
-        account.id ??
-        Date.now(),
-
-      email:
-        account.email,
-
-      username:
-        account.username,
-
-      picture:
-        account.picture ??
-        '',
-
-      privileges: {
-
-        admin:
-          isAdmin,
-
-        writer:
-          isAdmin
-
-      }
-
-    } as User;
-
-  }
-
-
-  // ==========================================
-  // כניסה באימייל וסיסמה
+  // כניסה
   // ==========================================
 
   async loginWithPassword(
@@ -376,8 +496,7 @@ export class AuthService {
     const account =
       accounts.find(
         item =>
-          item.email === email &&
-          item.password === password
+          item.email === email
       );
 
 
@@ -388,24 +507,67 @@ export class AuthService {
         success: false,
 
         status:
-          'failed'
+          'failed',
+
+        message:
+          'האימייל או הסיסמה שגויים.'
 
       };
 
     }
 
 
-    const isAdmin =
-      account.isAdmin === true ||
-      account.email ===
-        this.adminEmail
-          .trim()
-          .toLowerCase();
+    // ========================================
+    // בדיקת סיסמה
+    // ========================================
+
+    if (
+      account.password !==
+      password
+    ) {
+
+      return {
+
+        success: false,
+
+        status:
+          'failed',
+
+        message:
+          'האימייל או הסיסמה שגויים.'
+
+      };
+
+    }
 
 
-    account.isAdmin =
-      isAdmin;
+    // ========================================
+    // בדיקת אישור
+    // ========================================
 
+    if (
+      !account.approved &&
+      !account.isAdmin
+    ) {
+
+      return {
+
+        success: false,
+
+        status:
+          'pending',
+
+        message:
+          'החשבון עדיין לא אושר על ידי המנהל.'
+
+      };
+
+    }
+
+
+    // ========================================
+    // יצירת משתמש
+    // ========================================
 
     const user =
       this.createUser(
@@ -418,8 +580,11 @@ export class AuthService {
 
 
     localStorage.setItem(
+
       this.currentUserKey,
+
       JSON.stringify(user)
+
     );
 
 
@@ -428,7 +593,7 @@ export class AuthService {
       success: true,
 
       status:
-        isAdmin
+        account.isAdmin
           ? 'admin'
           : 'approved'
 
@@ -448,7 +613,10 @@ export class AuthService {
       success: false,
 
       status:
-        'google_not_configured'
+        'google_not_configured',
+
+      message:
+        'כניסה באמצעות Google עדיין אינה מחוברת.'
 
     };
 
@@ -456,14 +624,349 @@ export class AuthService {
 
 
   // ==========================================
-  // כניסה ישנה
+  // בקשת איפוס סיסמה
   // ==========================================
 
-  async login(
-    code: string
+  async requestPasswordReset(
+    email: string
   ) {
 
-    return false;
+    email =
+      email
+        .trim()
+        .toLowerCase();
+
+
+    const accounts =
+      this.getAccounts();
+
+
+    const account =
+      accounts.find(
+        item =>
+          item.email === email
+      );
+
+
+    if (!account) {
+
+      return {
+
+        success: false,
+
+        message:
+          'לא נמצא חשבון עם כתובת האימייל הזו.'
+
+      };
+
+    }
+
+
+    account.resetRequested =
+      true;
+
+
+    this.saveAccounts(accounts);
+
+
+    return {
+
+      success: true,
+
+      message:
+        'בקשת איפוס הסיסמה נשלחה למנהל.'
+
+    };
+
+  }
+
+
+  // ==========================================
+  // איפוס סיסמה על ידי מנהל
+  // ==========================================
+
+  async resetUserPassword(
+    userId: string,
+    newPassword: string
+  ) {
+
+    if (!this.isAdmin()) {
+
+      return {
+
+        success: false,
+
+        message:
+          'אין הרשאת מנהל.'
+
+      };
+
+    }
+
+
+    if (
+      newPassword.length < 6
+    ) {
+
+      return {
+
+        success: false,
+
+        message:
+          'הסיסמה חייבת להכיל לפחות 6 תווים.'
+
+      };
+
+    }
+
+
+    const accounts =
+      this.getAccounts();
+
+
+    const account =
+      accounts.find(
+        item =>
+          item.id === userId
+      );
+
+
+    if (!account) {
+
+      return {
+
+        success: false,
+
+        message:
+          'המשתמש לא נמצא.'
+
+      };
+
+    }
+
+
+    account.password =
+      newPassword;
+
+
+    account.resetRequested =
+      false;
+
+
+    this.saveAccounts(accounts);
+
+
+    return {
+
+      success: true,
+
+      message:
+        'הסיסמה שונתה בהצלחה.'
+
+    };
+
+  }
+
+
+  // ==========================================
+  // קבלת משתמשים למנהל
+  // ==========================================
+
+  getAllAccounts():
+    LocalAccount[] {
+
+    if (!this.isAdmin()) {
+
+      return [];
+
+    }
+
+
+    return this.getAccounts();
+
+  }
+
+
+  // ==========================================
+  // אישור משתמש
+  // ==========================================
+
+  async approveUser(
+    userId: string
+  ) {
+
+    if (!this.isAdmin()) {
+
+      return {
+
+        success: false,
+
+        message:
+          'אין הרשאת מנהל.'
+
+      };
+
+    }
+
+
+    const accounts =
+      this.getAccounts();
+
+
+    const account =
+      accounts.find(
+        item =>
+          item.id === userId
+      );
+
+
+    if (!account) {
+
+      return {
+
+        success: false,
+
+        message:
+          'המשתמש לא נמצא.'
+
+      };
+
+    }
+
+
+    account.approved =
+      true;
+
+
+    this.saveAccounts(accounts);
+
+
+    return {
+
+      success: true
+
+    };
+
+  }
+
+
+  // ==========================================
+  // דחיית משתמש
+  // ==========================================
+
+  async rejectUser(
+    userId: string
+  ) {
+
+    if (!this.isAdmin()) {
+
+      return {
+
+        success: false,
+
+        message:
+          'אין הרשאת מנהל.'
+
+      };
+
+    }
+
+
+    const accounts =
+      this.getAccounts();
+
+
+    const index =
+      accounts.findIndex(
+        item =>
+          item.id === userId
+      );
+
+
+    if (index === -1) {
+
+      return {
+
+        success: false,
+
+        message:
+          'המשתמש לא נמצא.'
+
+      };
+
+    }
+
+
+    /*
+     * מוחק את המשתמש.
+     */
+
+    accounts.splice(
+      index,
+      1
+    );
+
+
+    this.saveAccounts(accounts);
+
+
+    return {
+
+      success: true
+
+    };
+
+  }
+
+
+  // ==========================================
+  // בדיקת מנהל
+  // ==========================================
+
+  isAdmin(): boolean {
+
+    return (
+
+      this.userInfo
+        ?.privileges
+        ?.['admin']
+
+      === true
+
+    );
+
+  }
+
+
+  // ==========================================
+  // בדיקת כותב
+  // ==========================================
+
+  isWriter(): boolean {
+
+    return (
+
+      this.userInfo
+        ?.privileges
+        ?.['writer']
+
+      === true
+
+    );
+
+  }
+
+
+  // ==========================================
+  // משתמש נוכחי
+  // ==========================================
+
+  async loadUserInfo():
+    Promise<User | undefined> {
+
+    this.restoreUser();
+
+    return this.userInfo;
 
   }
 
@@ -489,47 +992,92 @@ export class AuthService {
 
 
   // ==========================================
-  // משתמש נוכחי
+  // כניסה ישנה
   // ==========================================
 
-  async loadUserInfo():
-    Promise<User | undefined> {
+  async login(
+    code: string
+  ) {
 
-    this.restoreUser();
-
-    return this.userInfo;
+    return false;
 
   }
 
 
   // ==========================================
-  // מנהל
+  // יצירת מנהל מקומית
   // ==========================================
 
-  isAdmin(): boolean {
+  async registerAdmin(
+    password: string
+  ) {
 
-    return (
-      this.userInfo
-        ?.privileges
-        ?.['admin']
-      === true
-    );
-
-  }
+    const accounts =
+      this.getAccounts();
 
 
-  // ==========================================
-  // כותב
-  // ==========================================
+    const adminEmail =
+      this.adminEmail
+        .trim()
+        .toLowerCase();
 
-  isWriter(): boolean {
 
-    return (
-      this.userInfo
-        ?.privileges
-        ?.['writer']
-      === true
-    );
+    const admin =
+      accounts.find(
+        account =>
+          account.email === adminEmail
+      );
+
+
+    if (!admin) {
+
+      return {
+
+        success: false,
+
+        message:
+          'חשבון המנהל לא נמצא.'
+
+      };
+
+    }
+
+
+    if (password.length < 6) {
+
+      return {
+
+        success: false,
+
+        message:
+          'הסיסמה חייבת להכיל לפחות 6 תווים.'
+
+      };
+
+    }
+
+
+    admin.password =
+      password;
+
+    admin.approved =
+      true;
+
+    admin.isAdmin =
+      true;
+
+    admin.writer =
+      true;
+
+
+    this.saveAccounts(accounts);
+
+
+    return {
+
+      success: true
+
+    };
 
   }
 
