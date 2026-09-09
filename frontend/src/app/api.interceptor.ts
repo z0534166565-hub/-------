@@ -1,23 +1,8 @@
 import { HttpInterceptorFn } from '@angular/common/http';
 
-const API_URL =
-  'https://updates-from-the-house-of-elders.onrender.com';
-
 export const apiInterceptor: HttpInterceptorFn = (req, next) => {
-
-  if (
-    req.url.startsWith('/api/') ||
-    req.url.startsWith('/auth/') ||
-    req.url.startsWith('/import/')
-  ) {
-
-    const apiReq = req.clone({
-      url: API_URL + req.url,
-      withCredentials: true
-    });
-
-    return next(apiReq);
-  }
+  // האתר רץ כולו על GitHub Pages.
+  // אין יותר הפניה לשרת Render.
 
   return next(req);
 };
