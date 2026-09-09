@@ -91,6 +91,12 @@ func main() {
 		login,
 	)
 
+	// כניסה באמצעות אימייל וסיסמה
+	r.Post(
+		"/auth/password-login",
+		passwordLogin,
+	)
+
 	r.Post(
 		"/auth/logout",
 		logout,
@@ -225,7 +231,7 @@ func main() {
 					protectedWithPrivilege(
 						Writer,
 						updateScheduledMessages,
-					),
+					)
 				)
 
 				// Moderator
@@ -355,21 +361,28 @@ func main() {
 	}
 
 	go func() {
-
 		log.Fatal(
 			http.ListenAndServe(
 				"localhost:6060",
 				nil,
 			),
 		)
-
 	}()
 
+	port := os.Getenv("PORT")
+
+	if port == "" {
+		port = os.Getenv("SERVER_PORT")
+	}
+
+	if port == "" {
+		port = "10000"
+	}
+
 	if err := http.ListenAndServe(
-		":"+os.Getenv("SERVER_PORT"),
+		"0.0.0.0:"+port,
 		r,
 	); err != nil {
-
 		log.Fatal(err)
 	}
 }
