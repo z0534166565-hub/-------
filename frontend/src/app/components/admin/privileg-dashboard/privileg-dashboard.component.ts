@@ -1,5 +1,9 @@
 import { DatePipe } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import {
+  Component,
+  OnDestroy,
+  OnInit
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import {
@@ -41,13 +45,7 @@ import { AuthService } from '../../../services/auth.service';
     './privileg-dashboard.component.scss'
 })
 export class PrivilegDashboardComponent
-  implements OnInit {
-
-  constructor(
-    private adminService: AdminService,
-    private tostService: NbToastrService,
-    public authService: AuthService,
-  ) {}
+  implements OnInit, OnDestroy {
 
   // =========================================================
   // PENDING USERS
@@ -55,26 +53,63 @@ export class PrivilegDashboardComponent
 
   pendingUsers: PendingUser[] = [];
 
-  loadingPendingUsers = false;
+  loadingPendingUsers =
+    false;
+
+  private refreshTimer:
+    ReturnType<typeof setInterval> | undefined;
+
+  private pendingUserListener:
+    ((event: Event) => void) | undefined;
+
 
   // =========================================================
-  // APPROVED USERS
+  // PRIVILEGE USERS
   // =========================================================
 
-  privilegeUsersList: PrivilegeUser[] = [];
+  privilegeUsersList:
+    PrivilegeUser[] = [];
 
-  addingNewUser = false;
+  addingNewUser =
+    false;
+
 
   newUser: PrivilegeUser = {
+
     username: '',
+
     publicName: '',
+
     email: '',
+
     privileges: {
+
       admin: false,
+
       moderator: false,
+
       writer: false
     }
   };
+
+
+  // =========================================================
+  // CONSTRUCTOR
+  // =========================================================
+
+  constructor(
+
+    private adminService:
+      AdminService,
+
+    private tostService:
+      NbToastrService,
+
+    public authService:
+      AuthService
+
+  ) {}
+
 
   // =========================================================
   // INIT
@@ -86,7 +121,11 @@ export class PrivilegDashboardComponent
 
     this.loadPrivilegeUsers();
 
+    this.startAutoRefresh();
+
+    this.listenForNewPendingUsers();
   }
+
 
   // =========================================================
   // LOAD PENDING USERS
@@ -94,7 +133,12 @@ export class PrivilegDashboardComponent
 
   loadPendingUsers(): void {
 
-    this.loadingPendingUsers = true;
+    if (this.loadingPendingUsers) {
+      return;
+    }
+
+    this.loadingPendingUsers =
+      true;
 
     this.adminService
       .getPendingUsers()
@@ -106,7 +150,12 @@ export class PrivilegDashboardComponent
 
       })
 
-      .catch(() => {
+      .catch(error => {
+
+        console.error(
+          'שגיאה בטעינת בקשות:',
+          error
+        );
 
         this.tostService.danger(
           '',
@@ -119,12 +168,54 @@ export class PrivilegDashboardComponent
 
         this.loadingPendingUsers =
           false;
-
       });
   }
 
+
   // =========================================================
-  // LOAD APPROVED USERS
+  // AUTO REFRESH
+  // =========================================================
+
+  private startAutoRefresh(): void {
+
+    /*
+     * כל 3 שניות בודקים אם נוספה בקשה.
+     *
+     * זה עובד גם כאשר המשתמש נרשם
+     * באותה לשונית/חלון.
+     */
+
+    this.refreshTimer =
+      setInterval(() => {
+
+        this.loadPendingUsers();
+
+      }, 3000);
+  }
+
+
+  // =========================================================
+  // LISTEN FOR NEW USERS
+  // =========================================================
+
+  private listenForNewPendingUsers(): void {
+
+    this.pendingUserListener =
+      () => {
+
+        this.loadPendingUsers();
+
+      };
+
+    window.addEventListener(
+      'channel-pending-user-created',
+      this.pendingUserListener
+    );
+  }
+
+
+  // =========================================================
+  // LOAD PRIVILEGE USERS
   // =========================================================
 
   loadPrivilegeUsers(): void {
@@ -139,18 +230,23 @@ export class PrivilegDashboardComponent
 
       })
 
-      .catch(() => {
+      .catch(error => {
+
+        console.error(
+          'שגיאה בטעינת משתמשים:',
+          error
+        );
 
         this.tostService.danger(
           '',
           'שגיאה בטעינת המשתמשים'
         );
-
       });
   }
 
+
   // =========================================================
-  // APPROVE
+  // APPROVE USER
   // =========================================================
 
   approveUser(
@@ -162,6 +258,7 @@ export class PrivilegDashboardComponent
         `האם לאשר את המשתמש ${user.email}?`
       )
     ) {
+
       return;
     }
 
@@ -170,7 +267,26 @@ export class PrivilegDashboardComponent
         user.email
       )
 
-      .then(() => {
+      .then(result => {
+
+        /*
+         * אם השירות מחזיר false,
+         * לא נמחק את המשתמש מהרשימה.
+         */
+
+        if (
+          result &&
+          (result as any).success === false
+        ) {
+
+          this.tostService.danger(
+            '',
+            (result as any).message ||
+            'שגיאה באישור המשתמש'
+          );
+
+          return;
+        }
 
         this.tostService.success(
           '',
@@ -187,18 +303,23 @@ export class PrivilegDashboardComponent
 
       })
 
-      .catch(() => {
+      .catch(error => {
+
+        console.error(
+          'שגיאה באישור:',
+          error
+        );
 
         this.tostService.danger(
           '',
           'שגיאה באישור המשתמש'
         );
-
       });
   }
 
+
   // =========================================================
-  // REJECT
+  // REJECT USER
   // =========================================================
 
   rejectUser(
@@ -210,6 +331,7 @@ export class PrivilegDashboardComponent
         `האם לדחות את הבקשה של ${user.email}?`
       )
     ) {
+
       return;
     }
 
@@ -218,7 +340,21 @@ export class PrivilegDashboardComponent
         user.email
       )
 
-      .then(() => {
+      .then(result => {
+
+        if (
+          result &&
+          (result as any).success === false
+        ) {
+
+          this.tostService.danger(
+            '',
+            (result as any).message ||
+            'שגיאה בדחיית הבקשה'
+          );
+
+          return;
+        }
 
         this.tostService.success(
           '',
@@ -233,18 +369,23 @@ export class PrivilegDashboardComponent
 
       })
 
-      .catch(() => {
+      .catch(error => {
+
+        console.error(
+          'שגיאה בדחיית בקשה:',
+          error
+        );
 
         this.tostService.danger(
           '',
           'שגיאה בדחיית הבקשה'
         );
-
       });
   }
 
+
   // =========================================================
-  // DELETE APPROVED USER
+  // DELETE USER
   // =========================================================
 
   deleteUser(
@@ -256,6 +397,7 @@ export class PrivilegDashboardComponent
         'האם אתה בטוח שברצונך למחוק את המשתמש הזה?'
       )
     ) {
+
       return;
     }
 
@@ -263,7 +405,14 @@ export class PrivilegDashboardComponent
       index,
       1
     );
+
+    /*
+     * שומרים מיד לאחר המחיקה.
+     */
+
+    this.saveChanges();
   }
+
 
   // =========================================================
   // ADD USER
@@ -271,14 +420,50 @@ export class PrivilegDashboardComponent
 
   saveNewUser(): void {
 
-    if (!this.newUser.email) {
+    if (
+      !this.newUser.email
+        ?.trim()
+    ) {
+
+      this.tostService.warning(
+        '',
+        'יש להזין כתובת אימייל'
+      );
+
+      return;
+    }
+
+    const email =
+      this.newUser.email
+        .trim()
+        .toLowerCase();
+
+    const exists =
+      this.privilegeUsersList.some(
+        user =>
+          user.email
+            ?.trim()
+            .toLowerCase() === email
+      );
+
+    if (exists) {
+
+      this.tostService.warning(
+        '',
+        'המשתמש כבר קיים ברשימה'
+      );
+
       return;
     }
 
     this.privilegeUsersList.push({
+
       ...this.newUser,
 
+      email,
+
       privileges: {
+
         ...this.newUser.privileges
       }
     });
@@ -290,6 +475,11 @@ export class PrivilegDashboardComponent
       false;
   }
 
+
+  // =========================================================
+  // RESET NEW USER
+  // =========================================================
+
   resetNewUser(): void {
 
     this.newUser =
@@ -299,8 +489,9 @@ export class PrivilegDashboardComponent
       false;
   }
 
+
   // =========================================================
-  // SAVE USERS
+  // SAVE CHANGES
   // =========================================================
 
   saveChanges(): void {
@@ -321,15 +512,20 @@ export class PrivilegDashboardComponent
 
       })
 
-      .catch(() => {
+      .catch(error => {
+
+        console.error(
+          'שגיאה בשמירת הרשאות:',
+          error
+        );
 
         this.tostService.danger(
           '',
           'שגיאה בשמירת השינויים'
         );
-
       });
   }
+
 
   // =========================================================
   // EMPTY USER
@@ -339,14 +535,52 @@ export class PrivilegDashboardComponent
     PrivilegeUser {
 
     return {
+
       username: '',
+
       publicName: '',
+
       email: '',
+
       privileges: {
+
         admin: false,
+
         moderator: false,
+
         writer: false
       }
     };
+  }
+
+
+  // =========================================================
+  // DESTROY
+  // =========================================================
+
+  ngOnDestroy(): void {
+
+    if (this.refreshTimer) {
+
+      clearInterval(
+        this.refreshTimer
+      );
+
+      this.refreshTimer =
+        undefined;
+    }
+
+    if (
+      this.pendingUserListener
+    ) {
+
+      window.removeEventListener(
+        'channel-pending-user-created',
+        this.pendingUserListener
+      );
+
+      this.pendingUserListener =
+        undefined;
+    }
   }
 }
