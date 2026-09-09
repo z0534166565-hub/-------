@@ -1,7 +1,18 @@
-import { ApplicationConfig, importProvidersFrom, provideZoneChangeDetection } from '@angular/core';
-import { provideRouter } from '@angular/router';
+import {
+  ApplicationConfig,
+  importProvidersFrom,
+  provideZoneChangeDetection
+} from '@angular/core';
+
+import {
+  provideRouter,
+  withHashLocation
+} from '@angular/router';
+
 import { provideHttpClient } from '@angular/common/http';
+
 import { routes } from './app.routes';
+
 import {
   NbDatepickerModule,
   NbDialogModule,
@@ -13,12 +24,17 @@ import {
   NbThemeModule,
   NbTimepickerModule,
   NbToastrModule
-} from "@nebular/theme";
-import { provideAnimationsAsync } from "@angular/platform-browser/animations/async";
-import { NbEvaIconsModule } from "@nebular/eva-icons";
-import { provideMarkdown } from "ngx-markdown";
-import { MarkdownConfig } from "./markdown.config";
-import { NgIconsModule, provideIcons } from "@ng-icons/core"; // Import NgIconsModule and provideIcons
+} from '@nebular/theme';
+
+import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
+
+import { NbEvaIconsModule } from '@nebular/eva-icons';
+
+import { provideMarkdown } from 'ngx-markdown';
+import { MarkdownConfig } from './markdown.config';
+
+import { NgIconsModule, provideIcons } from '@ng-icons/core';
+
 import {
   heroBold,
   heroCheck,
@@ -31,16 +47,33 @@ import {
   heroQuestionMarkCircle,
   heroUnderline,
   heroXMark
-} from "@ng-icons/heroicons/outline";
-import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
+} from '@ng-icons/heroicons/outline';
+
+import {
+  provideCharts,
+  withDefaultRegisterables
+} from 'ng2-charts';
+
 
 export const appConfig: ApplicationConfig = {
   providers: [
-    provideZoneChangeDetection({ eventCoalescing: true }),
-    provideRouter(routes), // withHashLocation()
+
+    provideZoneChangeDetection({
+      eventCoalescing: true
+    }),
+
+    // חשוב: Hash Routing מתאים ל-GitHub Pages
+    provideRouter(
+      routes,
+      withHashLocation()
+    ),
+
     provideHttpClient(),
+
     provideAnimationsAsync(),
+
     provideMarkdown(MarkdownConfig),
+
     provideIcons({
       heroBold,
       heroItalic,
@@ -54,20 +87,41 @@ export const appConfig: ApplicationConfig = {
       heroLockClosed,
       heroLockOpen
     }),
+
     importProvidersFrom(
-      NbThemeModule.forRoot({ name: 'custom' }, undefined, undefined, NbLayoutDirection.RTL),
+
+      NbThemeModule.forRoot(
+        { name: 'custom' },
+        undefined,
+        undefined,
+        NbLayoutDirection.RTL
+      ),
+
       NbIconModule,
+
       NbEvaIconsModule,
+
       NbMenuModule.forRoot(),
+
       NbDialogModule.forRoot(),
-      NbToastrModule.forRoot({ position: NbGlobalLogicalPosition.TOP_START }),
+
+      NbToastrModule.forRoot({
+        position: NbGlobalLogicalPosition.TOP_START
+      }),
+
       NgIconsModule,
+
       NbSidebarModule.forRoot(),
+
       NbDatepickerModule.forRoot(),
-      NbTimepickerModule.forRoot(),
+
+      NbTimepickerModule.forRoot()
+
     ),
+
     provideCharts(
       withDefaultRegisterables()
     )
+
   ]
 };
