@@ -16,9 +16,7 @@ export class AuthService {
     };
   }
 
-  async login(
-    code: string
-  ) {
+  async login(code: string) {
     return false;
   }
 
@@ -37,7 +35,9 @@ export class AuthService {
     return true;
   }
 
-  async loadUserInfo() {
+  async loadUserInfo(): Promise<User | undefined> {
+    // אין שרת חיצוני — GitHub Pages בלבד.
+    // מחזירים מיד כדי שהמסך לא ייתקע.
     return this.userInfo;
   }
 }
