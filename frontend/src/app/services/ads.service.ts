@@ -1,10 +1,8 @@
-import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
 
 export interface Ad {
   src: string;
-  width: number; // Width in pixels
+  width: number;
 }
 
 @Injectable({
@@ -12,11 +10,16 @@ export interface Ad {
 })
 export class AdsService {
 
-  constructor(
-    private http: HttpClient
-  ) { }
+  private readonly defaultAd: Ad = {
+    src: '',
+    width: 0
+  };
+
+  constructor() {}
 
   async getAds(): Promise<Ad> {
-    return firstValueFrom(this.http.get<Ad>('/api/ads/settings'))
+    return {
+      ...this.defaultAd
+    };
   }
 }
