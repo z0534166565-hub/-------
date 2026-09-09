@@ -13,6 +13,7 @@ import (
 	"github.com/gorilla/sessions"
 	"github.com/icza/dyno"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/idtoken"
@@ -48,6 +49,11 @@ type Auth struct {
 	Code string `json:"code"`
 }
 
+type PasswordLoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 type GoogleAuthValues struct {
 	GoogleOauthUrl   string `json:"googleOauthUrl"`
 	GoogleOauthScope string `json:"googleOauthScope"`
@@ -72,12 +78,10 @@ type Response struct {
 	CORS
 */
 func corsMiddleware(next http.Handler) http.Handler {
-
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 
-			origin :=
-				r.Header.Get("Origin")
+			origin := r.Header.Get("Origin")
 
 			if origin == frontendOrigin {
 
@@ -127,40 +131,149 @@ func corsMiddleware(next http.Handler) http.Handler {
 				return
 			}
 
-			next.ServeHTTP(
-				w,
-				r,
-			)
+			next.ServeHTTP(w, r)
 		},
 	)
 }
 
 /*
-	הגדרות Cookie עבור חיבור
-	GitHub Pages -> Render.
+	הגדרות Cookie
 */
-func configureSessionCookie(
-	session *sessions.Session,
-) {
+func configureSessionCookie(session *sessions.Session) {
 
 	session.Options.HttpOnly = true
-
 	session.Options.Secure = true
-
-	session.Options.SameSite =
-		http.SameSiteNoneMode
-
+	session.Options.SameSite = http.SameSiteNoneMode
 	session.Options.Path = "/"
 }
 
 /*
-	כתובת ה-Redirect הקבועה
-	של Google OAuth.
+	Google Redirect
 */
 func googleRedirectURL() string {
 	return frontendLoginURL
 }
 
+/*
+	Redis key עבור סיסמה.
+	הסיסמה עצמה לעולם לא נשמרת.
+*/
+func passwordRedisKey(email string) string {
+
+	email =
+		strings.ToLower(
+			strings.TrimSpace(email),
+		)
+
+	return "user:password:" + email
+}
+
+/*
+	שמירת hash של סיסמה.
+*/
+func savePasswordHash(
+	ctx context.Context,
+	email string,
+	password string,
+) error {
+
+	if len(password) < 6 {
+		return errors.New(
+			"password must contain at least 6 characters",
+		)
+	}
+
+	if len([]byte(password)) > 72 {
+		return errors.New(
+			"password is too long",
+		)
+	}
+
+	hash, err :=
+		bcrypt.GenerateFromPassword(
+			[]byte(password),
+			bcrypt.DefaultCost,
+		)
+
+	if err != nil {
+		return err
+	}
+
+	return rdb.Set(
+		ctx,
+		passwordRedisKey(email),
+		string(hash),
+		0,
+	).Err()
+}
+
+/*
+	קבלת hash של סיסמה.
+*/
+func getPasswordHash(
+	ctx context.Context,
+	email string,
+) (string, error) {
+
+	hash, err :=
+		rdb.Get(
+			ctx,
+			passwordRedisKey(email),
+		).Result()
+
+	if err != nil {
+		return "", err
+	}
+
+	return hash, nil
+}
+
+/*
+	יצירת Session לאחר אימות.
+*/
+func createUserSession(
+	w http.ResponseWriter,
+	r *http.Request,
+	user User,
+	picture string,
+) error {
+
+	session, err :=
+		store.Get(
+			r,
+			cookieName,
+		)
+
+	if err != nil {
+		return err
+	}
+
+	configureSessionCookie(session)
+
+	userSession := Session{
+		ID:         user.ID,
+		Username:   user.Username,
+		PublicName: user.PublicName,
+		Picture:    picture,
+		Privileges: user.Privileges,
+		Email:      user.Email,
+	}
+
+	session.Values["user"] =
+		userSession
+
+	session.Options.MaxAge =
+		60 * 60 * 24 * 30
+
+	return session.Save(
+		r,
+		w,
+	)
+}
+
+/*
+	Google Auth Values
+*/
 func getGoogleAuthValues(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -183,6 +296,9 @@ func getGoogleAuthValues(
 	)
 }
 
+/*
+	Google Login
+*/
 func login(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -195,7 +311,6 @@ func login(
 		)
 
 	defer cancel()
-
 	defer r.Body.Close()
 
 	var auth Auth
@@ -223,9 +338,7 @@ func login(
 
 		go saveLoginFailedLog(
 			"Decode",
-			errors.New(
-				"invalid credentials",
-			),
+			errors.New("invalid credentials"),
 		)
 
 		http.Error(
@@ -239,18 +352,10 @@ func login(
 
 	googleOAuthConfig :=
 		&oauth2.Config{
-
-			ClientID:
-				googleOAuthClientId,
-
-			ClientSecret:
-				googleOAuthClientSecret,
-
-			RedirectURL:
-				googleRedirectURL(),
-
-			Endpoint:
-				google.Endpoint,
+			ClientID:     googleOAuthClientId,
+			ClientSecret: googleOAuthClientSecret,
+			RedirectURL:  googleRedirectURL(),
+			Endpoint:     google.Endpoint,
 		}
 
 	token, err :=
@@ -370,8 +475,8 @@ func login(
 	}
 
 	email =
-		strings.TrimSpace(
-			strings.ToLower(email),
+		strings.ToLower(
+			strings.TrimSpace(email),
 		)
 
 	if name == "" {
@@ -380,9 +485,6 @@ func login(
 
 	go registeringEmail(email)
 
-	/*
-		בדיקה האם המשתמש מאושר.
-	*/
 	if _, approved :=
 		privilegesUsers.Load(email); !approved {
 
@@ -425,14 +527,11 @@ func login(
 			http.StatusForbidden,
 		)
 
-		response :=
+		json.NewEncoder(w).Encode(
 			Response{
 				Success: false,
 				Status:  "pending",
-			}
-
-		json.NewEncoder(w).Encode(
-			response,
+			},
 		)
 
 		return
@@ -472,52 +571,12 @@ func login(
 		)
 	}
 
-	userSession :=
-		Session{
-			ID:         u.ID,
-			Username:   u.Username,
-			PublicName: u.PublicName,
-			Picture:    picture,
-			Privileges: u.Privileges,
-			Email:      u.Email,
-		}
-
-	session, err :=
-		store.Get(
-			r,
-			cookieName,
-		)
-
-	if err != nil {
-
-		go saveLoginFailedLog(
-			"sessionGet",
-			err,
-		)
-
-		http.Error(
-			w,
-			"error",
-			http.StatusInternalServerError,
-		)
-
-		return
-	}
-
-	configureSessionCookie(
-		session,
-	)
-
-	session.Values["user"] =
-		userSession
-
-	session.Options.MaxAge =
-		60 * 60 * 24 * 30
-
 	if err :=
-		session.Save(
-			r,
+		createUserSession(
 			w,
+			r,
+			*u,
+			picture,
 		); err != nil {
 
 		go saveLoginFailedLog(
@@ -539,14 +598,252 @@ func login(
 		"application/json",
 	)
 
-	response :=
+	json.NewEncoder(w).Encode(
 		Response{
 			Success: true,
 			Status:  "approved",
+		},
+	)
+}
+
+/*
+	Email + Password Login
+*/
+func passwordLogin(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	ctx, cancel :=
+		context.WithTimeout(
+			r.Context(),
+			5*time.Second,
+		)
+
+	defer cancel()
+	defer r.Body.Close()
+
+	var request PasswordLoginRequest
+
+	if err :=
+		json.NewDecoder(
+			r.Body,
+		).Decode(&request); err != nil {
+
+		http.Error(
+			w,
+			"Invalid request",
+			http.StatusBadRequest,
+		)
+
+		return
+	}
+
+	email :=
+		strings.ToLower(
+			strings.TrimSpace(
+				request.Email,
+			),
+		)
+
+	password :=
+		request.Password
+
+	if email == "" ||
+		password == "" {
+
+		http.Error(
+			w,
+			"Email and password are required",
+			http.StatusBadRequest,
+		)
+
+		return
+	}
+
+	if len([]byte(password)) > 72 {
+
+		http.Error(
+			w,
+			"Invalid email or password",
+			http.StatusUnauthorized,
+		)
+
+		return
+	}
+
+	/*
+		בודקים האם המשתמש מאושר.
+	*/
+	userValue, approved :=
+		privilegesUsers.Load(email)
+
+	if !approved {
+
+		/*
+			המשתמש עדיין לא מאושר.
+		ניצור עבורו בקשת אישור ונשמור את
+		הסיסמה כ-hash בלבד.
+		*/
+
+		if err :=
+			savePasswordHash(
+				ctx,
+				email,
+				password,
+			); err != nil {
+
+			http.Error(
+				w,
+				"Failed to save password",
+				http.StatusInternalServerError,
+			)
+
+			return
 		}
 
+		pendingUser :=
+			PendingUser{
+				ID:         "",
+				Username:   email,
+				Email:      email,
+				PublicName: email,
+				CreatedAt:  time.Now(),
+			}
+
+		if err :=
+			dbAddPendingUser(
+				ctx,
+				pendingUser,
+			); err != nil {
+
+			go saveLoginFailedLog(
+				"passwordAddPendingUser",
+				err,
+			)
+
+			http.Error(
+				w,
+				"Failed to save pending user",
+				http.StatusInternalServerError,
+			)
+
+			return
+		}
+
+		w.Header().Set(
+			"Content-Type",
+			"application/json",
+		)
+
+		w.WriteHeader(
+			http.StatusForbidden,
+		)
+
+		json.NewEncoder(w).Encode(
+			Response{
+				Success: false,
+				Status:  "pending",
+			},
+		)
+
+		return
+	}
+
+	user, ok :=
+		userValue.(User)
+
+	if !ok {
+
+		http.Error(
+			w,
+			"Invalid user",
+			http.StatusInternalServerError,
+		)
+
+		return
+	}
+
+	passwordHash, err :=
+		getPasswordHash(
+			ctx,
+			email,
+		)
+
+	if err == redis.Nil {
+
+		http.Error(
+			w,
+			"Password login is not configured for this account",
+			http.StatusUnauthorized,
+		)
+
+		return
+	}
+
+	if err != nil {
+
+		go saveLoginFailedLog(
+			"getPasswordHash",
+			err,
+		)
+
+		http.Error(
+			w,
+			"error",
+			http.StatusInternalServerError,
+		)
+
+		return
+	}
+
+	if err :=
+		bcrypt.CompareHashAndPassword(
+			[]byte(passwordHash),
+			[]byte(password),
+		); err != nil {
+
+		http.Error(
+			w,
+			"Invalid email or password",
+			http.StatusUnauthorized,
+		)
+
+		return
+	}
+
+	if err :=
+		createUserSession(
+			w,
+			r,
+			user,
+			"",
+		); err != nil {
+
+		go saveLoginFailedLog(
+			"passwordSessionSave",
+			err,
+		)
+
+		http.Error(
+			w,
+			"error",
+			http.StatusInternalServerError,
+		)
+
+		return
+	}
+
+	w.Header().Set(
+		"Content-Type",
+		"application/json",
+	)
+
 	json.NewEncoder(w).Encode(
-		response,
+		Response{
+			Success: true,
+			Status:  "approved",
+		},
 	)
 }
 
@@ -572,19 +869,13 @@ func logout(
 		return
 	}
 
-	configureSessionCookie(
-		session,
-	)
+	configureSessionCookie(session)
 
 	session.Values["user"] = nil
-
 	session.Options.MaxAge = -1
 
 	if err :=
-		session.Save(
-			r,
-			w,
-		); err != nil {
+		session.Save(r, w); err != nil {
 
 		http.Error(
 			w,
@@ -600,13 +891,10 @@ func logout(
 		"application/json",
 	)
 
-	response :=
+	json.NewEncoder(w).Encode(
 		Response{
 			Success: true,
-		}
-
-	json.NewEncoder(w).Encode(
-		response,
+		},
 	)
 }
 
@@ -615,10 +903,7 @@ func checkLogin(
 ) http.Handler {
 
 	return http.HandlerFunc(
-		func(
-			w http.ResponseWriter,
-			r *http.Request,
-		) {
+		func(w http.ResponseWriter, r *http.Request) {
 
 			session, err :=
 				store.Get(
@@ -678,7 +963,6 @@ func checkLogin(
 			if !approved {
 
 				session.Values["user"] = nil
-
 				session.Options.MaxAge = -1
 
 				configureSessionCookie(
@@ -831,7 +1115,6 @@ func getUserInfo(
 		privilegesUsers.Load(email); !approved {
 
 		session.Values["user"] = nil
-
 		session.Options.MaxAge = -1
 
 		configureSessionCookie(
@@ -875,18 +1158,14 @@ func getUser(
 		)
 
 	if email == "" {
-
-		return nil,
-			errors.New(
-				"email not found in claims",
-			)
+		return nil, errors.New(
+			"email not found in claims",
+		)
 	}
 
 	email =
 		strings.ToLower(
-			strings.TrimSpace(
-				email,
-			),
+			strings.TrimSpace(email),
 		)
 
 	name, _ :=
@@ -910,11 +1189,9 @@ func getUser(
 			v.(User)
 
 		if !ok {
-
-			return nil,
-				errors.New(
-					"invalid approved user",
-				)
+			return nil, errors.New(
+				"invalid approved user",
+			)
 		}
 
 		if user.ID != id &&
@@ -956,7 +1233,6 @@ func getUser(
 				u.Email,
 				email,
 			) {
-
 				users[i] = user
 			}
 		}
@@ -973,8 +1249,7 @@ func getUser(
 		return &user, nil
 	}
 
-	return nil,
-		errors.New(
-			"user is not approved",
-		)
+	return nil, errors.New(
+		"user is not approved",
+	)
 }
