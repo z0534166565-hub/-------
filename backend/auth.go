@@ -18,14 +18,29 @@ import (
 )
 
 var secretKey string = os.Getenv("SECRET_KEY")
+
 var store = &redistore.RediStore{}
+
 var cookieName = "channel_session"
 
+const frontendOrigin =
+	"https://z0534166565-hub.github.io"
+
+const frontendLoginURL =
+	"https://z0534166565-hub.github.io/Updates-from-the-House-of-Elders/login"
+
 var (
-	googleOAuthScopes       = "https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile"
-	googleOAuthUrl          = google.Endpoint.AuthURL
-	googleOAuthClientId     = os.Getenv("GOOGLE_CLIENT_ID")
-	googleOAuthClientSecret = os.Getenv("GOOGLE_CLIENT_SECRET")
+	googleOAuthScopes =
+		"https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile"
+
+	googleOAuthUrl =
+		google.Endpoint.AuthURL
+
+	googleOAuthClientId =
+		os.Getenv("GOOGLE_CLIENT_ID")
+
+	googleOAuthClientSecret =
+		os.Getenv("GOOGLE_CLIENT_SECRET")
 )
 
 type Auth struct {
@@ -52,32 +67,142 @@ type Response struct {
 	Status  string `json:"status,omitempty"`
 }
 
-func getGoogleAuthValues(w http.ResponseWriter, r *http.Request) {
+/*
+	CORS
+*/
+func corsMiddleware(next http.Handler) http.Handler {
 
-	authValues := GoogleAuthValues{
-		GoogleOauthUrl:   googleOAuthUrl,
-		GoogleOauthScope: googleOAuthScopes,
-		GoogleClientId:   googleOAuthClientId,
-	}
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
 
-	w.Header().Set("Content-Type", "application/json")
+			origin :=
+				r.Header.Get("Origin")
 
-	json.NewEncoder(w).Encode(authValues)
+			if origin == frontendOrigin {
+
+				w.Header().Set(
+					"Access-Control-Allow-Origin",
+					frontendOrigin,
+				)
+
+				w.Header().Set(
+					"Access-Control-Allow-Credentials",
+					"true",
+				)
+
+				w.Header().Set(
+					"Access-Control-Allow-Headers",
+					"Content-Type, Authorization, X-Requested-With",
+				)
+
+				w.Header().Set(
+					"Access-Control-Allow-Methods",
+					"GET, POST, PUT, PATCH, DELETE, OPTIONS",
+				)
+
+				w.Header().Set(
+					"Vary",
+					"Origin",
+				)
+			}
+
+			if r.Method == http.MethodOptions {
+
+				if origin == frontendOrigin {
+
+					w.WriteHeader(
+						http.StatusNoContent,
+					)
+
+					return
+				}
+
+				http.Error(
+					w,
+					"CORS origin not allowed",
+					http.StatusForbidden,
+				)
+
+				return
+			}
+
+			next.ServeHTTP(
+				w,
+				r,
+			)
+		},
+	)
 }
 
-func login(w http.ResponseWriter, r *http.Request) {
+/*
+	הגדרות Cookie עבור חיבור
+	GitHub Pages -> Render.
+*/
+func configureSessionCookie(
+	session *redistore.Session,
+) {
 
-	ctx, cancel := context.WithTimeout(
-		r.Context(),
-		5*time.Second,
+	session.Options.HttpOnly = true
+
+	session.Options.Secure = true
+
+	session.Options.SameSite =
+		http.SameSiteNoneMode
+
+	session.Options.Path = "/"
+}
+
+/*
+	כתובת ה-Redirect הקבועה
+	של Google OAuth.
+*/
+func googleRedirectURL() string {
+	return frontendLoginURL
+}
+
+func getGoogleAuthValues(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	authValues :=
+		GoogleAuthValues{
+			GoogleOauthUrl: googleOAuthUrl,
+			GoogleOauthScope: googleOAuthScopes,
+			GoogleClientId: googleOAuthClientId,
+		}
+
+	w.Header().Set(
+		"Content-Type",
+		"application/json",
 	)
 
+	json.NewEncoder(w).Encode(
+		authValues,
+	)
+}
+
+func login(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	ctx, cancel :=
+		context.WithTimeout(
+			r.Context(),
+			5*time.Second,
+		)
+
 	defer cancel()
+
 	defer r.Body.Close()
 
 	var auth Auth
 
-	if err := json.NewDecoder(r.Body).Decode(&auth); err != nil {
+	if err :=
+		json.NewDecoder(
+			r.Body,
+		).Decode(&auth); err != nil {
 
 		go saveLoginFailedLog(
 			"Decode",
@@ -97,7 +222,9 @@ func login(w http.ResponseWriter, r *http.Request) {
 
 		go saveLoginFailedLog(
 			"Decode",
-			errors.New("invalid credentials"),
+			errors.New(
+				"invalid credentials",
+			),
 		)
 
 		http.Error(
@@ -109,19 +236,27 @@ func login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	origin := r.Header.Get("Origin")
+	googleOAuthConfig :=
+		&oauth2.Config{
 
-	googleOAuthConfig := &oauth2.Config{
-		ClientID:     googleOAuthClientId,
-		ClientSecret: googleOAuthClientSecret,
-		RedirectURL:  origin + "/login",
-		Endpoint:     google.Endpoint,
-	}
+			ClientID:
+				googleOAuthClientId,
 
-	token, err := googleOAuthConfig.Exchange(
-		ctx,
-		auth.Code,
-	)
+			ClientSecret:
+				googleOAuthClientSecret,
+
+			RedirectURL:
+				googleRedirectURL(),
+
+			Endpoint:
+				google.Endpoint,
+		}
+
+	token, err :=
+		googleOAuthConfig.Exchange(
+			ctx,
+			auth.Code,
+		)
 
 	if err != nil {
 
@@ -233,9 +368,10 @@ func login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	email = strings.TrimSpace(
-		strings.ToLower(email),
-	)
+	email =
+		strings.TrimSpace(
+			strings.ToLower(email),
+		)
 
 	if name == "" {
 		name = email
@@ -244,25 +380,26 @@ func login(w http.ResponseWriter, r *http.Request) {
 	go registeringEmail(email)
 
 	/*
-		בדיקה ראשונה:
-		האם המשתמש כבר אושר?
+		בדיקה האם המשתמש מאושר.
 	*/
+	if _, approved :=
+		privilegesUsers.Load(email); !approved {
 
-	if _, approved := privilegesUsers.Load(email); !approved {
+		pendingUser :=
+			PendingUser{
+				ID:         id,
+				Username:   name,
+				Email:      email,
+				PublicName: name,
+				Picture:    picture,
+				CreatedAt:  time.Now(),
+			}
 
-		pendingUser := PendingUser{
-			ID:         id,
-			Username:   name,
-			Email:      email,
-			PublicName: name,
-			Picture:    picture,
-			CreatedAt:  time.Now(),
-		}
-
-		if err := dbAddPendingUser(
-			ctx,
-			pendingUser,
-		); err != nil {
+		if err :=
+			dbAddPendingUser(
+				ctx,
+				pendingUser,
+			); err != nil {
 
 			go saveLoginFailedLog(
 				"addPendingUser",
@@ -278,11 +415,6 @@ func login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		/*
-			חשוב:
-			לא יוצרים Session למשתמש שממתין לאישור.
-		*/
-
 		w.Header().Set(
 			"Content-Type",
 			"application/json",
@@ -292,10 +424,11 @@ func login(w http.ResponseWriter, r *http.Request) {
 			http.StatusForbidden,
 		)
 
-		response := Response{
-			Success: false,
-			Status:  "pending",
-		}
+		response :=
+			Response{
+				Success: false,
+				Status:  "pending",
+			}
 
 		json.NewEncoder(w).Encode(
 			response,
@@ -304,15 +437,11 @@ func login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	/*
-		המשתמש אושר.
-		עכשיו נטען את המשתמש המאושר.
-	*/
-
-	u, err := getUser(
-		ctx,
-		payload.Claims,
-	)
+	u, err :=
+		getUser(
+			ctx,
+			payload.Claims,
+		)
 
 	if err != nil {
 
@@ -330,15 +459,11 @@ func login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	/*
-		אם המשתמש היה בעבר ברשימת ההמתנה,
-		אין יותר צורך בבקשה שלו.
-	*/
-
-	if err := dbRemovePendingUser(
-		ctx,
-		email,
-	); err != nil {
+	if err :=
+		dbRemovePendingUser(
+			ctx,
+			email,
+		); err != nil {
 
 		go saveLoginFailedLog(
 			"removePendingUser",
@@ -346,14 +471,15 @@ func login(w http.ResponseWriter, r *http.Request) {
 		)
 	}
 
-	userSession := Session{
-		ID:         u.ID,
-		Username:   u.Username,
-		PublicName: u.PublicName,
-		Picture:    picture,
-		Privileges: u.Privileges,
-		Email:      u.Email,
-	}
+	userSession :=
+		Session{
+			ID:         u.ID,
+			Username:   u.Username,
+			PublicName: u.PublicName,
+			Picture:    picture,
+			Privileges: u.Privileges,
+			Email:      u.Email,
+		}
 
 	session, err :=
 		store.Get(
@@ -377,16 +503,21 @@ func login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	configureSessionCookie(
+		session,
+	)
+
 	session.Values["user"] =
 		userSession
 
 	session.Options.MaxAge =
 		60 * 60 * 24 * 30
 
-	if err := session.Save(
-		r,
-		w,
-	); err != nil {
+	if err :=
+		session.Save(
+			r,
+			w,
+		); err != nil {
 
 		go saveLoginFailedLog(
 			"sessionSave",
@@ -407,10 +538,11 @@ func login(w http.ResponseWriter, r *http.Request) {
 		"application/json",
 	)
 
-	response := Response{
-		Success: true,
-		Status:  "approved",
-	}
+	response :=
+		Response{
+			Success: true,
+			Status:  "approved",
+		}
 
 	json.NewEncoder(w).Encode(
 		response,
@@ -439,14 +571,19 @@ func logout(
 		return
 	}
 
+	configureSessionCookie(
+		session,
+	)
+
 	session.Values["user"] = nil
 
 	session.Options.MaxAge = -1
 
-	if err := session.Save(
-		r,
-		w,
-	); err != nil {
+	if err :=
+		session.Save(
+			r,
+			w,
+		); err != nil {
 
 		http.Error(
 			w,
@@ -462,9 +599,10 @@ func logout(
 		"application/json",
 	)
 
-	response := Response{
-		Success: true,
-	}
+	response :=
+		Response{
+			Success: true,
+		}
 
 	json.NewEncoder(w).Encode(
 		response,
@@ -498,8 +636,7 @@ func checkLogin(
 				return
 			}
 
-			userValue,
-				ok :=
+			userValue, ok :=
 				session.Values["user"]
 
 			if !ok {
@@ -513,8 +650,7 @@ func checkLogin(
 				return
 			}
 
-			userSession,
-				ok :=
+			userSession, ok :=
 				userValue.(Session)
 
 			if !ok {
@@ -528,12 +664,6 @@ func checkLogin(
 				return
 			}
 
-			/*
-				בדיקה חשובה:
-				גם אם יש למשתמש Cookie ישן,
-				הוא חייב עדיין להיות ברשימת המשתמשים המאושרים.
-			*/
-
 			email :=
 				strings.ToLower(
 					strings.TrimSpace(
@@ -541,18 +671,18 @@ func checkLogin(
 					),
 				)
 
-			approvedUser,
-				approved :=
+			approvedUser, approved :=
 				privilegesUsers.Load(email)
 
 			if !approved {
 
-				/*
-					מבטלים את ה-Session הישן.
-				*/
-
 				session.Values["user"] = nil
+
 				session.Options.MaxAge = -1
+
+				configureSessionCookie(
+					session,
+				)
 
 				_ = session.Save(
 					r,
@@ -567,12 +697,6 @@ func checkLogin(
 
 				return
 			}
-
-			/*
-				מעדכנים את ההרשאות מהשרת,
-				כדי ששינוי הרשאות ייכנס לתוקף
-				גם עבור Session קיים.
-			*/
 
 			if user, ok :=
 				approvedUser.(User); ok {
@@ -594,6 +718,10 @@ func checkLogin(
 
 				session.Values["user"] =
 					userSession
+
+				configureSessionCookie(
+					session,
+				)
 
 				_ = session.Save(
 					r,
@@ -624,8 +752,7 @@ func checkPrivilege(
 		return false
 	}
 
-	s,
-		ok :=
+	s, ok :=
 		session.Values["user"].(Session)
 
 	if !ok {
@@ -639,16 +766,14 @@ func checkPrivilege(
 			),
 		)
 
-	userValue,
-		approved :=
+	userValue, approved :=
 		privilegesUsers.Load(email)
 
 	if !approved {
 		return false
 	}
 
-	user,
-		ok :=
+	user, ok :=
 		userValue.(User)
 
 	if !ok {
@@ -680,8 +805,7 @@ func getUserInfo(
 		return
 	}
 
-	userInfo,
-		ok :=
+	userInfo, ok :=
 		session.Values["user"].(Session)
 
 	if !ok {
@@ -702,15 +826,16 @@ func getUserInfo(
 			),
 		)
 
-	/*
-		גם כאן בודקים שהמשתמש עדיין מאושר.
-	*/
-
 	if _, approved :=
 		privilegesUsers.Load(email); !approved {
 
 		session.Values["user"] = nil
+
 		session.Options.MaxAge = -1
+
+		configureSessionCookie(
+			session,
+		)
 
 		_ = session.Save(
 			r,
@@ -749,6 +874,7 @@ func getUser(
 		)
 
 	if email == "" {
+
 		return nil,
 			errors.New(
 				"email not found in claims",
@@ -776,18 +902,14 @@ func getUser(
 			claims["sub"],
 		)
 
-	/*
-		רק משתמש שנמצא ברשימת המשתמשים
-	המאושרים יכול לקבל User.
-	*/
-
 	if v, ok :=
 		privilegesUsers.Load(email); ok {
 
-		user,
-			ok = v.(User)
+		user, ok =
+			v.(User)
 
 		if !ok {
+
 			return nil,
 				errors.New(
 					"invalid approved user",
