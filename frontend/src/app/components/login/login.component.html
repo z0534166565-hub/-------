@@ -5,7 +5,9 @@
   <nb-card class="login-card">
 
     <nb-card-header>
-      <h2>כניסה לערוץ</h2>
+      <h2>
+        {{ showRegister ? 'הרשמה לערוץ' : 'כניסה לערוץ' }}
+      </h2>
     </nb-card-header>
 
     <nb-card-body>
@@ -13,7 +15,7 @@
       @if (checkUserInfo || loading) {
 
         <div class="message">
-          בודק את פרטי ההתחברות...
+          {{ loading ? 'מתחבר...' : 'בודק את פרטי ההתחברות...' }}
         </div>
 
       }
@@ -28,11 +30,6 @@
 
           <p>
             חשבונך ממתין לאישור מנהל.
-          </p>
-
-          <p>
-            לאחר שהמנהל יאשר את בקשתך,
-            תוכל להתחבר לערוץ.
           </p>
 
           <button
@@ -54,10 +51,12 @@
 
           <div class="message-icon">⚠️</div>
 
-          <h3>ההתחברות נכשלה</h3>
+          <h3>
+            {{ showRegister ? 'ההרשמה נכשלה' : 'ההתחברות נכשלה' }}
+          </h3>
 
           <p>
-            {{ errorMessage || 'נסה להתחבר שוב.' }}
+            {{ errorMessage || 'נסה שוב.' }}
           </p>
 
           <button
@@ -66,7 +65,114 @@
             fullWidth
             (click)="status = undefined"
           >
-            חזרה למסך הכניסה
+            חזרה
+          </button>
+
+        </div>
+
+      }
+
+      @else if (showRegister) {
+
+        <div class="login-content">
+
+          <p>
+            צור חשבון חדש
+          </p>
+
+          <div class="password-login">
+
+            <div class="form-field">
+
+              <label for="register-username">
+                שם משתמש
+              </label>
+
+              <input
+                id="register-username"
+                type="text"
+                autocomplete="username"
+                placeholder="הזן שם משתמש"
+                [(ngModel)]="registerUsername"
+              />
+
+            </div>
+
+            <div class="form-field">
+
+              <label for="register-email">
+                אימייל
+              </label>
+
+              <input
+                id="register-email"
+                type="email"
+                autocomplete="email"
+                placeholder="הזן כתובת אימייל"
+                [(ngModel)]="registerEmail"
+              />
+
+            </div>
+
+            <div class="form-field">
+
+              <label for="register-password">
+                סיסמה
+              </label>
+
+              <input
+                id="register-password"
+                type="password"
+                autocomplete="new-password"
+                placeholder="לפחות 6 תווים"
+                [(ngModel)]="registerPassword"
+                (keyup.enter)="register()"
+              />
+
+            </div>
+
+            <div class="form-field">
+
+              <label for="register-password-confirm">
+                אימות סיסמה
+              </label>
+
+              <input
+                id="register-password-confirm"
+                type="password"
+                autocomplete="new-password"
+                placeholder="הזן שוב את הסיסמה"
+                [(ngModel)]="registerPasswordConfirm"
+                (keyup.enter)="register()"
+              />
+
+            </div>
+
+            <button
+              nbButton
+              status="primary"
+              size="large"
+              fullWidth
+              [disabled]="loading"
+              (click)="register()"
+            >
+              הרשמה
+            </button>
+
+          </div>
+
+          <div class="login-divider">
+            <span>כבר יש לך חשבון?</span>
+          </div>
+
+          <button
+            nbButton
+            status="basic"
+            size="large"
+            fullWidth
+            (click)="showRegister = false; status = undefined"
+          >
+            כניסה לחשבון
           </button>
 
         </div>
@@ -79,7 +185,6 @@
 
           <p>
             התחבר באמצעות אימייל וסיסמה
-            או באמצעות Google.
           </p>
 
           <div class="password-login">
@@ -131,8 +236,18 @@
           </div>
 
           <div class="login-divider">
-            <span>או</span>
+            <span>אין לך חשבון?</span>
           </div>
+
+          <button
+            nbButton
+            status="basic"
+            size="large"
+            fullWidth
+            (click)="showRegister = true; status = undefined"
+          >
+            יצירת חשבון חדש
+          </button>
 
           <button
             nbButton
