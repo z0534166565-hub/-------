@@ -1,4 +1,3 @@
-
 import { Injectable } from '@angular/core';
 import { Observable, of } from 'rxjs';
 import { Channel } from '../models/channel.model';
@@ -50,21 +49,82 @@ export interface Attachment {
 }
 
 /**
- * שירות צ'אט מקומי.
+ * EventSource מקומי.
  *
- * אין כאן:
- * - /api
- * - Render
- * - Firebase
- * - Supabase
- * - שרת חיצוני
- *
- * הנתונים נשמרים ב-localStorage של הדפדפן.
+ * הוא שומר את הממשק שה-chat.component.ts
+ * כבר מצפה לו, אבל אינו פותח חיבור לשרת.
  */
+class LocalEventSource implements EventSource {
+
+  readonly CONNECTING = 0;
+  readonly OPEN = 1;
+  readonly CLOSED = 2;
+
+  readyState = 1;
+
+  url = '';
+
+  withCredentials = false;
+
+  onerror: ((this: EventSource, ev: Event) => any) | null = null;
+
+  onmessage: ((this: EventSource, ev: MessageEvent) => any) | null = null;
+
+  onopen: ((this: EventSource, ev: Event) => any) | null = null;
+
+  private closed = false;
+
+  close(): void {
+    this.closed = true;
+    this.readyState = this.CLOSED;
+  }
+
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions
+  ): void {
+    // אין חיבור שרת מקומי.
+  }
+
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | EventListenerOptions
+  ): void {
+    // אין חיבור שרת מקומי.
+  }
+
+  dispatchEvent(event: Event): boolean {
+    if (this.closed) {
+      return false;
+    }
+
+    if (event.type === 'open') {
+      this.onopen?.call(this, event);
+    }
+
+    if (event.type === 'message') {
+      this.onmessage?.call(
+        this,
+        event as MessageEvent
+      );
+    }
+
+    if (event.type === 'error') {
+      this.onerror?.call(this, event);
+    }
+
+    return true;
+  }
+}
+
 @Injectable({
   providedIn: 'root'
 })
 export class ChatService {
+
+  private eventSource?: EventSource;
 
   private readonly messagesKey =
     'channel_local_messages';
@@ -93,13 +153,6 @@ export class ChatService {
 
   public channelInfo?: Channel;
 
-  /**
-   * EventTarget מקומי שמחליף את SSE.
-   * כך רכיבי Angular שמאזינים לאירועים
-   * לא יקבלו שגיאת EventSource.
-   */
-  private localEvents = new EventTarget();
-
   constructor() {
     this.loadMessages();
     this.loadChannelInfo();
@@ -107,13 +160,15 @@ export class ChatService {
   }
 
   // =========================================================
-  // אחסון הודעות
+  // הודעות
   // =========================================================
 
-  private loadMessages() {
+  private loadMessages(): void {
     try {
       const data =
-        localStorage.getItem(this.messagesKey);
+        localStorage.getItem(
+          this.messagesKey
+        );
 
       if (!data) {
         this.messages = [];
@@ -128,7 +183,7 @@ export class ChatService {
       }
 
       this.messages = parsed.map(
-        (message: any) => ({
+        (message: any): ChatMessage => ({
           ...message,
 
           timestamp:
@@ -151,11 +206,18 @@ export class ChatService {
     }
   }
 
-  private saveMessages() {
-    localStorage.setItem(
-      this.messagesKey,
-      JSON.stringify(this.messages)
-    );
+  private saveMessages(): void {
+    try {
+      localStorage.setItem(
+        this.messagesKey,
+        JSON.stringify(this.messages)
+      );
+    } catch (error) {
+      console.error(
+        'לא ניתן לשמור את ההודעות:',
+        error
+      );
+    }
   }
 
   private nextMessageId(): number {
@@ -163,89 +225,15 @@ export class ChatService {
       return 1;
     }
 
-    return Math.max(
-      ...this.messages.map(
-        message => Number(message.id || 0)
-      )
-    ) + 1;
-  }
-
-  // =========================================================
-  // פרטי ערוץ
-  // =========================================================
-
-  private loadChannelInfo() {
-    try {
-      const data =
-        localStorage.getItem(this.channelKey);
-
-      if (data) {
-        this.channelInfo =
-          JSON.parse(data);
-
-        return;
-      }
-    } catch {
-      // ממשיכים לערכי ברירת מחדל
-    }
-
-    /**
-     * אין לנו כאן API שמחזיר Channel.
-     *
-     * אם למודל Channel יש שדות חובה נוספים,
-     * הם נשמרים/נטענים כאשר מנהל מעדכן את פרטי הערוץ.
-     */
-    this.channelInfo = {
-      name: 'עדכונים',
-      description: 'ערוץ עדכונים',
-      logoUrl: ''
-    } as Channel;
-
-    this.saveChannelInfo();
-  }
-
-  private saveChannelInfo() {
-    if (!this.channelInfo) {
-      return;
-    }
-
-    localStorage.setItem(
-      this.channelKey,
-      JSON.stringify(this.channelInfo)
+    return (
+      Math.max(
+        ...this.messages.map(
+          message =>
+            Number(message.id || 0)
+        )
+      ) + 1
     );
   }
-
-  async updateChannelInfo() {
-    this.loadChannelInfo();
-  }
-
-  editChannelInfo(
-    name: string,
-    description: string,
-    logoUrl: string
-  ): Observable<ResponseResult> {
-
-    this.channelInfo = {
-      ...(this.channelInfo || {}),
-      name,
-      description,
-      logoUrl
-    } as Channel;
-
-    this.saveChannelInfo();
-
-    this.emitEvent('channel-updated', {
-      channelInfo: this.channelInfo
-    });
-
-    return of({
-      success: true
-    } as ResponseResult);
-  }
-
-  // =========================================================
-  // הודעות
-  // =========================================================
 
   getMessages(
     offset: number,
@@ -255,18 +243,19 @@ export class ChatService {
 
     this.loadMessages();
 
-    let result = [...this.messages];
-
-    if (direction === 'before') {
-      result = result.reverse();
-    }
-
     if (offset < 0) {
       offset = 0;
     }
 
-    if (limit < 1) {
+    if (limit <= 0) {
       limit = 50;
+    }
+
+    let result =
+      [...this.messages];
+
+    if (direction === 'before') {
+      result = result.reverse();
     }
 
     result =
@@ -278,12 +267,6 @@ export class ChatService {
     return of(result);
   }
 
-  /**
-   * הוספת הודעה מקומית.
-   *
-   * שימושי אם רכיב אחר באתר רוצה להוסיף
-   * הודעה בלי שרת.
-   */
   addMessage(
     message: ChatMessage
   ): ChatMessage {
@@ -309,21 +292,19 @@ export class ChatService {
         message.deleted === true
     };
 
-    this.messages.push(newMessage);
+    this.messages.push(
+      newMessage
+    );
 
     this.saveMessages();
 
-    this.emitEvent(
-      'message-created',
+    this.sendLocalMessageEvent(
       newMessage
     );
 
     return newMessage;
   }
 
-  /**
-   * מחיקת הודעה מקומית.
-   */
   deleteMessage(
     messageId: number
   ): Observable<ResponseResult> {
@@ -332,7 +313,8 @@ export class ChatService {
 
     const message =
       this.messages.find(
-        item => item.id === messageId
+        item =>
+          item.id === messageId
       );
 
     if (!message) {
@@ -346,21 +328,16 @@ export class ChatService {
 
     this.saveMessages();
 
-    this.emitEvent(
-      'message-deleted',
-      {
-        id: messageId
-      }
-    );
+    this.sendLocalMessageEvent({
+      id: messageId,
+      deleted: true
+    });
 
     return of({
       success: true
     } as ResponseResult);
   }
 
-  /**
-   * עריכת הודעה מקומית.
-   */
   editMessage(
     messageId: number,
     text: string
@@ -370,7 +347,8 @@ export class ChatService {
 
     const message =
       this.messages.find(
-        item => item.id === messageId
+        item =>
+          item.id === messageId
       );
 
     if (!message) {
@@ -380,16 +358,86 @@ export class ChatService {
     }
 
     message.text = text;
-
-    message.last_edit =
-      new Date();
+    message.last_edit = new Date();
 
     this.saveMessages();
 
-    this.emitEvent(
-      'message-updated',
+    this.sendLocalMessageEvent(
       message
     );
+
+    return of({
+      success: true
+    } as ResponseResult);
+  }
+
+  // =========================================================
+  // פרטי ערוץ
+  // =========================================================
+
+  private loadChannelInfo(): void {
+
+    try {
+      const data =
+        localStorage.getItem(
+          this.channelKey
+        );
+
+      if (data) {
+        this.channelInfo =
+          JSON.parse(data);
+
+        return;
+      }
+    } catch {
+      // שימוש בברירת המחדל
+    }
+
+    this.channelInfo = {
+      name: 'עדכונים',
+      description: 'ערוץ עדכונים',
+      logoUrl: ''
+    } as Channel;
+
+    this.saveChannelInfo();
+  }
+
+  private saveChannelInfo(): void {
+
+    if (!this.channelInfo) {
+      return;
+    }
+
+    try {
+      localStorage.setItem(
+        this.channelKey,
+        JSON.stringify(
+          this.channelInfo
+        )
+      );
+    } catch {
+      // מתעלמים משגיאת אחסון
+    }
+  }
+
+  async updateChannelInfo(): Promise<void> {
+    this.loadChannelInfo();
+  }
+
+  editChannelInfo(
+    name: string,
+    description: string,
+    logoUrl: string
+  ): Observable<ResponseResult> {
+
+    this.channelInfo = {
+      ...(this.channelInfo || {}),
+      name,
+      description,
+      logoUrl
+    } as Channel;
+
+    this.saveChannelInfo();
 
     return of({
       success: true
@@ -409,7 +457,8 @@ export class ChatService {
 
     const message =
       this.messages.find(
-        item => item.id === messageId
+        item =>
+          item.id === messageId
       );
 
     if (!message) {
@@ -427,12 +476,8 @@ export class ChatService {
 
     this.saveMessages();
 
-    this.emitEvent(
-      'reaction-updated',
-      {
-        messageId,
-        emoji: react
-      }
+    this.sendLocalMessageEvent(
+      message
     );
 
     return {
@@ -444,7 +489,8 @@ export class ChatService {
   // אימוג'ים
   // =========================================================
 
-  private loadEmojis() {
+  private loadEmojis(): void {
+
     try {
       const data =
         localStorage.getItem(
@@ -463,7 +509,7 @@ export class ChatService {
       }
 
     } catch {
-      // ברירת המחדל נשארת
+      // ברירת מחדל
     }
   }
 
@@ -471,7 +517,10 @@ export class ChatService {
     reload: boolean = false
   ): Promise<string[]> {
 
-    if (!reload && this.emojis.length > 0) {
+    if (
+      !reload &&
+      this.emojis.length > 0
+    ) {
       return [...this.emojis];
     }
 
@@ -482,26 +531,27 @@ export class ChatService {
 
   setEmojisList(
     emojis: string[]
-  ) {
+  ): void {
 
     this.emojis =
       Array.from(
         new Set(emojis)
       );
 
-    localStorage.setItem(
-      this.emojisKey,
-      JSON.stringify(this.emojis)
-    );
-
-    this.emitEvent(
-      'emojis-updated',
-      this.emojis
-    );
+    try {
+      localStorage.setItem(
+        this.emojisKey,
+        JSON.stringify(
+          this.emojis
+        )
+      );
+    } catch {
+      // מתעלמים
+    }
   }
 
   // =========================================================
-  // דיווח על הודעה
+  // דיווח
   // =========================================================
 
   reportMessage(
@@ -510,6 +560,7 @@ export class ChatService {
   ): Promise<ResponseResult> {
 
     try {
+
       const data =
         localStorage.getItem(
           this.reportsKey
@@ -529,7 +580,9 @@ export class ChatService {
 
       localStorage.setItem(
         this.reportsKey,
-        JSON.stringify(reports)
+        JSON.stringify(
+          reports
+        )
       );
 
       return Promise.resolve({
@@ -537,6 +590,7 @@ export class ChatService {
       } as ResponseResult);
 
     } catch {
+
       return Promise.resolve({
         success: false
       } as ResponseResult);
@@ -547,79 +601,58 @@ export class ChatService {
   // SSE מקומי
   // =========================================================
 
-  /**
-   * במקום:
-   *
-   * new EventSource('/api/events')
-   *
-   * אנחנו מחזירים EventTarget מקומי.
-   *
-   * חשוב:
-   * זה לא חיבור בין משתמשים.
-   * זה עובד בתוך הדפדפן הנוכחי בלבד.
-   */
-  sseListener(): EventTarget {
+  sseListener(): EventSource {
 
-    return this.localEvents;
+    if (this.eventSource) {
+      this.eventSource.close();
+    }
+
+    const localSource =
+      new LocalEventSource();
+
+    this.eventSource =
+      localSource;
+
+    return localSource;
   }
 
-  sseClose() {
-    // אין חיבור שרת לסגור.
+  sseClose(): void {
+
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource =
+        undefined;
+    }
   }
 
-  /**
-   * מאפשר לרכיבים אחרים להאזין לאירוע מסוים.
-   */
-  addEventListener(
-    eventName: string,
-    callback: EventListenerOrEventListenerObject
-  ) {
+  private sendLocalMessageEvent(
+    message: ChatMessage
+  ): void {
 
-    this.localEvents.addEventListener(
-      eventName,
-      callback
-    );
-  }
+    const source =
+      this.eventSource;
 
-  removeEventListener(
-    eventName: string,
-    callback: EventListenerOrEventListenerObject
-  ) {
-
-    this.localEvents.removeEventListener(
-      eventName,
-      callback
-    );
-  }
-
-  private emitEvent(
-    eventName: string,
-    data: any
-  ) {
+    if (!source) {
+      return;
+    }
 
     const event =
-      new CustomEvent(
-        eventName,
+      new MessageEvent(
+        'message',
         {
-          detail: data
+          data: JSON.stringify(
+            message
+          )
         }
       );
 
-    this.localEvents.dispatchEvent(
-      event
-    );
+    source.dispatchEvent(event);
   }
 
   // =========================================================
-  // קבצים
+  // קבצים מקומיים
   // =========================================================
 
-  /**
-   * אין שרת להעלות אליו קובץ.
-   *
-   * לכן קובץ מקומי הופך ל-Data URL.
-   * זה מתאים לקבצים קטנים בלבד.
-   */
   async prepareAttachment(
     file: File
   ): Promise<Attachment> {
@@ -636,37 +669,6 @@ export class ChatService {
     };
   }
 
-  private fileToDataUrl(
-    file: File
-  ): Promise<string> {
-
-    return new Promise(
-      (resolve, reject) => {
-
-        const reader =
-          new FileReader();
-
-        reader.onload = () =>
-          resolve(
-            String(reader.result || '')
-          );
-
-        reader.onerror =
-          () =>
-            reject(
-              new Error(
-                'לא ניתן לקרוא את הקובץ.'
-              )
-            );
-
-        reader.readAsDataURL(file);
-      }
-    );
-  }
-
-  /**
-   * יוצר ChatFile מקובץ מקומי.
-   */
   async createChatFile(
     file: File
   ): Promise<ChatFile> {
@@ -678,15 +680,47 @@ export class ChatService {
       url,
       filename: file.name,
       filetype:
-        file.type || 'application/octet-stream'
+        file.type ||
+        'application/octet-stream'
     };
   }
 
+  private fileToDataUrl(
+    file: File
+  ): Promise<string> {
+
+    return new Promise(
+      (resolve, reject) => {
+
+        const reader =
+          new FileReader();
+
+        reader.onload = () => {
+          resolve(
+            String(
+              reader.result || ''
+            )
+          );
+        };
+
+        reader.onerror = () => {
+          reject(
+            new Error(
+              'לא ניתן לקרוא את הקובץ.'
+            )
+          );
+        };
+
+        reader.readAsDataURL(file);
+      }
+    );
+  }
+
   // =========================================================
-  // ניקוי נתונים מקומיים
+  // ניקוי נתונים
   // =========================================================
 
-  clearLocalMessages() {
+  clearLocalMessages(): void {
 
     this.messages = [];
 
@@ -694,13 +728,13 @@ export class ChatService {
       this.messagesKey
     );
 
-    this.emitEvent(
-      'messages-cleared',
-      {}
-    );
+    this.sendLocalMessageEvent({
+      id: 0,
+      deleted: true
+    });
   }
 
-  clearLocalChatData() {
+  clearLocalChatData(): void {
 
     this.messages = [];
 
@@ -710,11 +744,6 @@ export class ChatService {
 
     localStorage.removeItem(
       this.reportsKey
-    );
-
-    this.emitEvent(
-      'messages-cleared',
-      {}
     );
   }
 }
