@@ -1,6 +1,10 @@
 name: Deploy
 
-on: [push, workflow_dispatch]
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,9 +16,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
@@ -26,20 +32,62 @@ jobs:
 
       - name: Build Angular
         working-directory: frontend
-        run: npm run build -- --configuration production
+        run: |
+          npm run build -- \
+            --configuration production \
+            --base-href /Updates-from-the-House-of-Elders/ \
+            --deploy-url /Updates-from-the-House-of-Elders/
+
+      - name: Find Angular output
+        run: |
+          echo "=== DIST ==="
+          find frontend/dist -maxdepth 5 -type f | sort
+
+          echo "=== INDEX FILES ==="
+          find frontend/dist -type f -name "index.html"
 
       - name: Prepare Pages
         run: |
           rm -rf pages
-          mkdir pages
-          cp -R frontend/dist/channel/browser/. pages/
+          mkdir -p pages
+
+          DIST_DIR=$(find frontend/dist -type f -name "index.html" -printf '%h\n' | head -n 1)
+
+          if [ -z "$DIST_DIR" ]; then
+            echo "ERROR: Angular index.html was not found"
+            exit 1
+          fi
+
+          echo "Angular output directory:"
+          echo "$DIST_DIR"
+
+          cp -R "$DIST_DIR"/. pages/
+
+          touch pages/.nojekyll
+
           echo "=== PAGES CONTENT ==="
-          ls -la pages
+          find pages -maxdepth 3 -type f | sort
+
+          echo "=== CHECK REQUIRED FILES ==="
           test -f pages/index.html
 
-      - uses: actions/configure-pages@v5
+          MAIN_FILE=$(find pages -maxdepth 2 -type f -name "main-*.js" | head -n 1)
+          POLYFILLS_FILE=$(find pages -maxdepth 2 -type f -name "polyfills-*.js" | head -n 1)
+          STYLES_FILE=$(find pages -maxdepth 2 -type f -name "styles-*.css" | head -n 1)
 
-      - uses: actions/upload-pages-artifact@v3
+          echo "Main: $MAIN_FILE"
+          echo "Polyfills: $POLYFILLS_FILE"
+          echo "Styles: $STYLES_FILE"
+
+          test -n "$MAIN_FILE"
+          test -n "$POLYFILLS_FILE"
+          test -n "$STYLES_FILE"
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
           path: pages
 
@@ -49,6 +97,9 @@ jobs:
 
     environment:
       name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - uses: actions/deploy-pages@v4
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
