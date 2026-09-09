@@ -10,6 +10,7 @@ type LocalAccount = {
   isAdmin: boolean;
   writer: boolean;
   resetRequested: boolean;
+  createdAt: string;
 };
 
 @Injectable({
@@ -39,75 +40,149 @@ export class AuthService {
     this.restoreUser();
   }
 
-  private ensureAdminAccount() {
-    const accounts = this.getAccounts();
-    const email = this.adminEmail.trim().toLowerCase();
+  // =========================================================
+  // ADMIN ACCOUNT
+  // =========================================================
 
-    const existing = accounts.find(
-      account => account.email === email
-    );
+  private ensureAdminAccount(): void {
+
+    const accounts =
+      this.getAccounts();
+
+    const email =
+      this.adminEmail
+        .trim()
+        .toLowerCase();
+
+    const existing =
+      accounts.find(
+        account =>
+          account.email === email
+      );
 
     if (existing) {
-      existing.email = email;
-      existing.password = this.adminPassword;
-      existing.username = this.adminUsername;
-      existing.isAdmin = true;
-      existing.approved = true;
-      existing.writer = true;
-      existing.resetRequested = false;
+
+      existing.email =
+        email;
+
+      existing.password =
+        this.adminPassword;
+
+      existing.username =
+        this.adminUsername;
+
+      existing.isAdmin =
+        true;
+
+      existing.approved =
+        true;
+
+      existing.writer =
+        true;
+
+      existing.resetRequested =
+        false;
+
+      if (!existing.createdAt) {
+        existing.createdAt =
+          new Date().toISOString();
+      }
 
       this.saveAccounts(accounts);
+
       return;
     }
 
     const admin: LocalAccount = {
-      id: 'admin-' + Date.now().toString(),
+
+      id:
+        'admin-' +
+        Date.now().toString(),
+
       email,
-      password: this.adminPassword,
-      username: this.adminUsername,
-      approved: true,
-      isAdmin: true,
-      writer: true,
-      resetRequested: false
+
+      password:
+        this.adminPassword,
+
+      username:
+        this.adminUsername,
+
+      approved:
+        true,
+
+      isAdmin:
+        true,
+
+      writer:
+        true,
+
+      resetRequested:
+        false,
+
+      createdAt:
+        new Date().toISOString()
     };
 
     accounts.push(admin);
+
     this.saveAccounts(accounts);
   }
 
+  // =========================================================
+  // ACCOUNTS
+  // =========================================================
+
   private getAccounts(): LocalAccount[] {
+
     try {
+
       const data =
-        localStorage.getItem(this.accountsKey);
+        localStorage.getItem(
+          this.accountsKey
+        );
 
       if (!data) {
         return [];
       }
 
-      const accounts = JSON.parse(data);
+      const parsed =
+        JSON.parse(data);
 
-      if (!Array.isArray(accounts)) {
+      if (!Array.isArray(parsed)) {
         return [];
       }
 
-      return accounts.map(
+      return parsed.map(
         (account: any): LocalAccount => ({
-          id: String(
-            account.id ??
-            ('user-' + Date.now().toString())
-          ),
 
-          email: String(
-            account.email ?? ''
-          ),
+          id:
+            String(
+              account.id ??
+              (
+                'user-' +
+                Date.now().toString()
+              )
+            ),
 
-          password: String(
-            account.password ?? ''
-          ),
+          email:
+            String(
+              account.email ??
+              ''
+            )
+            .trim()
+            .toLowerCase(),
 
-          username: String(
-            account.username ?? ''
-          ),
+          password:
+            String(
+              account.password ??
+              ''
+            ),
+
+          username:
+            String(
+              account.username ??
+              ''
+            ),
 
           approved:
             account.approved === true,
@@ -119,40 +194,70 @@ export class AuthService {
             account.writer === true,
 
           resetRequested:
-            account.resetRequested === true
+            account.resetRequested === true,
+
+          createdAt:
+            String(
+              account.createdAt ??
+              ''
+            )
         })
       );
 
     } catch {
+
       return [];
     }
   }
 
   private saveAccounts(
     accounts: LocalAccount[]
-  ) {
-    localStorage.setItem(
-      this.accountsKey,
-      JSON.stringify(accounts)
-    );
+  ): void {
+
+    try {
+
+      localStorage.setItem(
+        this.accountsKey,
+        JSON.stringify(accounts)
+      );
+
+    } catch (error) {
+
+      console.error(
+        'לא ניתן לשמור את המשתמשים:',
+        error
+      );
+    }
   }
 
-  private restoreUser() {
+  // =========================================================
+  // CURRENT USER
+  // =========================================================
+
+  private restoreUser(): void {
+
     try {
+
       const data =
         localStorage.getItem(
           this.currentUserKey
         );
 
       if (!data) {
-        this.userInfo = undefined;
+
+        this.userInfo =
+          undefined;
+
         return;
       }
 
-      this.userInfo = JSON.parse(data);
+      this.userInfo =
+        JSON.parse(data);
 
     } catch {
-      this.userInfo = undefined;
+
+      this.userInfo =
+        undefined;
     }
   }
 
@@ -161,16 +266,35 @@ export class AuthService {
   ): User {
 
     return {
-      id: account.id,
-      email: account.email,
-      username: account.username,
-      picture: '',
+
+      id:
+        account.id,
+
+      email:
+        account.email,
+
+      username:
+        account.username,
+
+      picture:
+        '',
+
       privileges: {
-        admin: account.isAdmin,
-        writer: account.writer
+
+        admin:
+          account.isAdmin,
+
+        writer:
+          account.writer
+
       }
+
     } as User;
   }
+
+  // =========================================================
+  // REGISTER
+  // =========================================================
 
   async register(
     email: string,
@@ -178,13 +302,20 @@ export class AuthService {
     username: string
   ) {
 
-    email = email
-      .trim()
-      .toLowerCase();
+    email =
+      email
+        .trim()
+        .toLowerCase();
 
-    username = username.trim();
+    username =
+      username.trim();
+
+    // -------------------------------------------------------
+    // VALIDATION
+    // -------------------------------------------------------
 
     if (!email) {
+
       return {
         success: false,
         message:
@@ -193,6 +324,7 @@ export class AuthService {
     }
 
     if (!email.includes('@')) {
+
       return {
         success: false,
         message:
@@ -201,6 +333,7 @@ export class AuthService {
     }
 
     if (!username) {
+
       return {
         success: false,
         message:
@@ -208,7 +341,26 @@ export class AuthService {
       };
     }
 
+    if (username.length < 2) {
+
+      return {
+        success: false,
+        message:
+          'שם המשתמש חייב להכיל לפחות 2 תווים.'
+      };
+    }
+
+    if (!password) {
+
+      return {
+        success: false,
+        message:
+          'יש להזין סיסמה.'
+      };
+    }
+
     if (password.length < 6) {
+
       return {
         success: false,
         message:
@@ -216,16 +368,33 @@ export class AuthService {
       };
     }
 
+    // -------------------------------------------------------
+    // LOAD CURRENT ACCOUNTS
+    // -------------------------------------------------------
+
     const accounts =
       this.getAccounts();
 
-    const exists =
-      accounts.some(
+    const existing =
+      accounts.find(
         account =>
           account.email === email
       );
 
-    if (exists) {
+    if (existing) {
+
+      if (
+        existing.approved === false
+      ) {
+
+        return {
+          success: false,
+          status: 'pending',
+          message:
+            'כבר קיימת בקשת הצטרפות שממתינה לאישור מנהל.'
+        };
+      }
+
       return {
         success: false,
         message:
@@ -233,46 +402,98 @@ export class AuthService {
       };
     }
 
+    // -------------------------------------------------------
+    // CREATE PENDING ACCOUNT
+    // -------------------------------------------------------
+
     const account: LocalAccount = {
+
       id:
         'user-' +
-        Date.now().toString(),
+        Date.now().toString() +
+        '-' +
+        Math.random()
+          .toString(36)
+          .substring(2, 8),
 
       email,
+
       password,
+
       username,
 
-      approved: false,
+      approved:
+        false,
 
-      isAdmin: false,
+      isAdmin:
+        false,
 
-      writer: false,
+      writer:
+        false,
 
-      resetRequested: false
+      resetRequested:
+        false,
+
+      createdAt:
+        new Date().toISOString()
     };
+
+    // -------------------------------------------------------
+    // SAVE REQUEST
+    // -------------------------------------------------------
 
     accounts.push(account);
 
     this.saveAccounts(accounts);
 
-    return {
-      success: false,
+    // -------------------------------------------------------
+    // NOTIFY OTHER OPEN TABS
+    // -------------------------------------------------------
 
-      status: 'pending',
+    try {
+
+      window.dispatchEvent(
+        new CustomEvent(
+          'channel-pending-user-created',
+          {
+            detail: {
+              id: account.id,
+              email: account.email
+            }
+          }
+        )
+      );
+
+    } catch {
+      // לא קריטי
+    }
+
+    return {
+
+      success:
+        false,
+
+      status:
+        'pending',
 
       message:
         'ההרשמה התקבלה. החשבון ממתין לאישור מנהל.'
     };
   }
 
+  // =========================================================
+  // LOGIN
+  // =========================================================
+
   async loginWithPassword(
     email: string,
     password: string
   ) {
 
-    email = email
-      .trim()
-      .toLowerCase();
+    email =
+      email
+        .trim()
+        .toLowerCase();
 
     const accounts =
       this.getAccounts();
@@ -284,18 +505,32 @@ export class AuthService {
       );
 
     if (!account) {
+
       return {
-        success: false,
-        status: 'failed',
+
+        success:
+          false,
+
+        status:
+          'failed',
+
         message:
           'האימייל או הסיסמה שגויים.'
       };
     }
 
-    if (account.password !== password) {
+    if (
+      account.password !== password
+    ) {
+
       return {
-        success: false,
-        status: 'failed',
+
+        success:
+          false,
+
+        status:
+          'failed',
+
         message:
           'האימייל או הסיסמה שגויים.'
       };
@@ -305,9 +540,15 @@ export class AuthService {
       !account.approved &&
       !account.isAdmin
     ) {
+
       return {
-        success: false,
-        status: 'pending',
+
+        success:
+          false,
+
+        status:
+          'pending',
+
         message:
           'החשבון עדיין לא אושר על ידי המנהל.'
       };
@@ -316,7 +557,8 @@ export class AuthService {
     const user =
       this.createUser(account);
 
-    this.userInfo = user;
+    this.userInfo =
+      user;
 
     localStorage.setItem(
       this.currentUserKey,
@@ -324,7 +566,9 @@ export class AuthService {
     );
 
     return {
-      success: true,
+
+      success:
+        true,
 
       status:
         account.isAdmin
@@ -333,10 +577,16 @@ export class AuthService {
     };
   }
 
+  // =========================================================
+  // GOOGLE LOGIN
+  // =========================================================
+
   async loginWithGoogle() {
 
     return {
-      success: false,
+
+      success:
+        false,
 
       status:
         'google_not_configured',
@@ -346,13 +596,18 @@ export class AuthService {
     };
   }
 
+  // =========================================================
+  // PASSWORD RESET REQUEST
+  // =========================================================
+
   async requestPasswordReset(
     email: string
   ) {
 
-    email = email
-      .trim()
-      .toLowerCase();
+    email =
+      email
+        .trim()
+        .toLowerCase();
 
     const accounts =
       this.getAccounts();
@@ -364,24 +619,35 @@ export class AuthService {
       );
 
     if (!account) {
+
       return {
-        success: false,
+
+        success:
+          false,
+
         message:
           'לא נמצא חשבון עם כתובת האימייל הזו.'
       };
     }
 
-    account.resetRequested = true;
+    account.resetRequested =
+      true;
 
     this.saveAccounts(accounts);
 
     return {
-      success: true,
+
+      success:
+        true,
 
       message:
         'בקשת איפוס הסיסמה נשלחה למנהל.'
     };
   }
+
+  // =========================================================
+  // RESET USER PASSWORD
+  // =========================================================
 
   async resetUserPassword(
     userId: string,
@@ -389,16 +655,26 @@ export class AuthService {
   ) {
 
     if (!this.isAdmin()) {
+
       return {
-        success: false,
+
+        success:
+          false,
+
         message:
           'אין הרשאת מנהל.'
       };
     }
 
-    if (newPassword.length < 6) {
+    if (
+      newPassword.length < 6
+    ) {
+
       return {
-        success: false,
+
+        success:
+          false,
+
         message:
           'הסיסמה חייבת להכיל לפחות 6 תווים.'
       };
@@ -414,8 +690,12 @@ export class AuthService {
       );
 
     if (!account) {
+
       return {
-        success: false,
+
+        success:
+          false,
+
         message:
           'המשתמש לא נמצא.'
       };
@@ -430,12 +710,18 @@ export class AuthService {
     this.saveAccounts(accounts);
 
     return {
-      success: true,
+
+      success:
+        true,
 
       message:
         'הסיסמה שונתה בהצלחה.'
     };
   }
+
+  // =========================================================
+  // ALL ACCOUNTS
+  // =========================================================
 
   getAllAccounts():
     LocalAccount[] {
@@ -447,13 +733,21 @@ export class AuthService {
     return this.getAccounts();
   }
 
+  // =========================================================
+  // APPROVE USER
+  // =========================================================
+
   async approveUser(
     userId: string
   ) {
 
     if (!this.isAdmin()) {
+
       return {
-        success: false,
+
+        success:
+          false,
+
         message:
           'אין הרשאת מנהל.'
       };
@@ -469,14 +763,19 @@ export class AuthService {
       );
 
     if (!account) {
+
       return {
-        success: false,
+
+        success:
+          false,
+
         message:
           'המשתמש לא נמצא.'
       };
     }
 
-    account.approved = true;
+    account.approved =
+      true;
 
     this.saveAccounts(accounts);
 
@@ -485,13 +784,21 @@ export class AuthService {
     };
   }
 
+  // =========================================================
+  // REJECT USER
+  // =========================================================
+
   async rejectUser(
     userId: string
   ) {
 
     if (!this.isAdmin()) {
+
       return {
-        success: false,
+
+        success:
+          false,
+
         message:
           'אין הרשאת מנהל.'
       };
@@ -507,14 +814,21 @@ export class AuthService {
       );
 
     if (index === -1) {
+
       return {
-        success: false,
+
+        success:
+          false,
+
         message:
           'המשתמש לא נמצא.'
       };
     }
 
-    accounts.splice(index, 1);
+    accounts.splice(
+      index,
+      1
+    );
 
     this.saveAccounts(accounts);
 
@@ -522,6 +836,10 @@ export class AuthService {
       success: true
     };
   }
+
+  // =========================================================
+  // ADMIN
+  // =========================================================
 
   isAdmin(): boolean {
 
@@ -532,6 +850,10 @@ export class AuthService {
     );
   }
 
+  // =========================================================
+  // WRITER
+  // =========================================================
+
   isWriter(): boolean {
 
     return (
@@ -541,6 +863,10 @@ export class AuthService {
     );
   }
 
+  // =========================================================
+  // LOAD USER
+  // =========================================================
+
   async loadUserInfo():
     Promise<User | undefined> {
 
@@ -548,6 +874,10 @@ export class AuthService {
 
     return this.userInfo;
   }
+
+  // =========================================================
+  // LOGOUT
+  // =========================================================
 
   async logout() {
 
@@ -561,12 +891,20 @@ export class AuthService {
     return true;
   }
 
+  // =========================================================
+  // LEGACY LOGIN
+  // =========================================================
+
   async login(
     code: string
   ) {
 
     return false;
   }
+
+  // =========================================================
+  // REGISTER ADMIN
+  // =========================================================
 
   async registerAdmin(
     password: string
@@ -587,16 +925,26 @@ export class AuthService {
       );
 
     if (!admin) {
+
       return {
-        success: false,
+
+        success:
+          false,
+
         message:
           'חשבון המנהל לא נמצא.'
       };
     }
 
-    if (password.length < 6) {
+    if (
+      password.length < 6
+    ) {
+
       return {
-        success: false,
+
+        success:
+          false,
+
         message:
           'הסיסמה חייבת להכיל לפחות 6 תווים.'
       };
