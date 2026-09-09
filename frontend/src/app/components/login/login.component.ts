@@ -11,25 +11,24 @@ import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-login',
+  standalone: true,
+
   imports: [
     FormsModule,
     NbButtonModule,
     NbCardModule
   ],
+
   templateUrl: './login.component.html',
   styleUrl: './login.component.scss'
 })
-export class LoginComponent
-  implements OnInit {
+export class LoginComponent implements OnInit {
 
   code = '';
-
   email = '';
-
   password = '';
 
   checkUserInfo = false;
-
   loading = false;
 
   loginMethod:
@@ -67,15 +66,16 @@ export class LoginComponent
 
     } catch {
 
-      // אין משתמש מחובר.
-      // ממשיכים למסך ההתחברות.
+      // אין משתמש מחובר
     }
 
     this._route.queryParams.subscribe(
       params => {
 
         if (!params['code']) {
+
           this.checkUserInfo = false;
+
           return;
         }
 
@@ -90,8 +90,7 @@ export class LoginComponent
 
           this.checkUserInfo = false;
 
-          this.status =
-            'failed';
+          this.status = 'failed';
 
           this.errorMessage =
             'אימות Google לא תקין.';
@@ -106,21 +105,32 @@ export class LoginComponent
 
         this._authService
           .login(this.code)
+          .then((success) => {
 
-          .then(() => {
-
-            this.status =
-              'approved';
+            this.loading = false;
 
             localStorage.removeItem(
               'google_oauth_state'
             );
 
-            this.router.navigate(['/']);
+            if (success) {
+
+              this.status = 'approved';
+
+              this.router.navigate(['/']);
+
+              return;
+            }
+
+            this.status = 'failed';
+
+            this.errorMessage =
+              'ההתחברות באמצעות Google נכשלה.';
 
           })
-
           .catch((err: any) => {
+
+            this.loading = false;
 
             this.code = '';
 
@@ -133,45 +143,42 @@ export class LoginComponent
               err?.error?.status === 'pending'
             ) {
 
-              this.status =
-                'pending';
+              this.status = 'pending';
 
               return;
             }
 
-            this.status =
-              'failed';
+            this.status = 'failed';
 
             this.errorMessage =
               'ההתחברות באמצעות Google נכשלה.';
 
           })
-
           .finally(() => {
-            this.loading = false;
+
             this.checkUserInfo = false;
+
           });
+
       }
     );
 
     this.checkUserInfo = false;
   }
 
+
   async loginWithPassword() {
 
-    this.status =
-      undefined;
+    this.status = undefined;
 
-    this.errorMessage =
-      '';
+    this.errorMessage = '';
 
     const email =
       this.email.trim();
 
     if (!email) {
 
-      this.status =
-        'failed';
+      this.status = 'failed';
 
       this.errorMessage =
         'יש להזין כתובת אימייל.';
@@ -181,8 +188,7 @@ export class LoginComponent
 
     if (!this.password) {
 
-      this.status =
-        'failed';
+      this.status = 'failed';
 
       this.errorMessage =
         'יש להזין סיסמה.';
@@ -192,8 +198,7 @@ export class LoginComponent
 
     if (this.password.length < 6) {
 
-      this.status =
-        'failed';
+      this.status = 'failed';
 
       this.errorMessage =
         'הסיסמה חייבת להכיל לפחות 6 תווים.';
@@ -211,30 +216,23 @@ export class LoginComponent
           this.password
         );
 
-      if (
-        result.status === 'pending'
-      ) {
+      if (result.status === 'pending') {
 
-        this.status =
-          'pending';
+        this.status = 'pending';
 
         return;
       }
 
-      if (
-        result.success
-      ) {
+      if (result.success) {
 
-        this.status =
-          'approved';
+        this.status = 'approved';
 
         await this.router.navigate(['/']);
 
         return;
       }
 
-      this.status =
-        'failed';
+      this.status = 'failed';
 
       this.errorMessage =
         'ההתחברות נכשלה.';
@@ -246,18 +244,14 @@ export class LoginComponent
         err?.error?.status === 'pending'
       ) {
 
-        this.status =
-          'pending';
+        this.status = 'pending';
 
         return;
       }
 
-      if (
-        err?.status === 401
-      ) {
+      if (err?.status === 401) {
 
-        this.status =
-          'failed';
+        this.status = 'failed';
 
         this.errorMessage =
           'האימייל או הסיסמה שגויים.';
@@ -265,40 +259,58 @@ export class LoginComponent
         return;
       }
 
-      this.status =
-        'failed';
+      this.status = 'failed';
 
       this.errorMessage =
         'לא ניתן להתחבר כרגע. נסה שוב.';
-    }
 
-    finally {
+    } finally {
 
       this.loading = false;
+
     }
   }
 
-  loginWithGoogle() {
 
-    this.status =
-      undefined;
+  async loginWithGoogle() {
 
-    this.errorMessage =
-      '';
+    this.status = undefined;
+
+    this.errorMessage = '';
 
     this.loading = true;
 
-    this._authService
-      .loginWithGoogle()
-      .catch(() => {
+    try {
 
-        this.loading = false;
+      const result =
+        await this._authService.loginWithGoogle();
 
-        this.status =
-          'failed';
+      this.loading = false;
 
-        this.errorMessage =
-          'לא ניתן לפתוח את ההתחברות באמצעות Google.';
-      });
+      if (result?.success) {
+
+        this.status = 'approved';
+
+        await this.router.navigate(['/']);
+
+        return;
+      }
+
+      this.status = 'failed';
+
+      this.errorMessage =
+        'הכניסה באמצעות Google אינה זמינה כרגע.';
+
+    } catch {
+
+      this.loading = false;
+
+      this.status = 'failed';
+
+      this.errorMessage =
+        'לא ניתן לפתוח את ההתחברות באמצעות Google.';
+
+    }
   }
+
 }
